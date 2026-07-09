@@ -442,11 +442,13 @@ export function SectorRail({
         </span>
       </button>
 
-      {/* Hub footer — nav back to other tabs since we replace the AppShell */}
+      {/* Hub footer — nav back to other tabs since we replace the AppShell.
+          Left padding clears the floating Settings button (fixed, bottom-left,
+          ~60px footprint) so the links don't sit underneath it. */}
       <div
         style={{
           borderTop: "1px solid #1e293b",
-          padding: "8px 12px 12px",
+          padding: "8px 12px 12px 64px",
           display: "flex",
           flexWrap: "wrap",
           gap: 4,
