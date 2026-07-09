@@ -1330,7 +1330,6 @@ export function CommandCenterClient({
                   setRefreshStatus("Cached data");
                 }
               }}
-              onClearLearning={handleClearLearning}
             />
           </div>
         </header>

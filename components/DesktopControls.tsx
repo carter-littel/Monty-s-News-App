@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
 type DesktopControlsProps = {
@@ -7,7 +8,6 @@ type DesktopControlsProps = {
   refreshStatus?: string | null;
   onRefreshComplete?: (result?: DesktopOperationResult) => void;
   onPreferencesLoaded?: (preferences: DesktopPreferences) => void;
-  onClearLearning?: () => void;
 };
 
 type AppInfo = {
@@ -15,11 +15,6 @@ type AppInfo = {
   version: string;
   platform: string;
 };
-
-function formatSignedNumber(value: number | undefined) {
-  const safeValue = Number.isFinite(value) ? Number(value) : 0;
-  return `${safeValue > 0 ? "+" : ""}${safeValue.toFixed(1)}`;
-}
 
 function formatArticleImpact(result: DesktopOperationResult) {
   if (result.skipped) {
@@ -43,35 +38,18 @@ function formatArticleImpact(result: DesktopOperationResult) {
   return `${incoming} in - ${result.inserted ?? 0} new - ${churn}${memoryBreaks}`;
 }
 
-function formatResourceImpact(result: DesktopOperationResult) {
-  if (!result.resourceImpact) {
-    return null;
-  }
-
-  const impact = result.resourceImpact;
-  return `CPU ${impact.cpuPercent.toFixed(1)}% avg - RSS ${formatSignedNumber(
-    impact.rssDeltaMb,
-  )} MB - heap ${formatSignedNumber(impact.heapUsedDeltaMb)} MB`;
-}
-
 export function DesktopControls({
   exportPayload,
   refreshStatus,
   onRefreshComplete,
   onPreferencesLoaded,
-  onClearLearning,
 }: DesktopControlsProps) {
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
   const [isDesktop, setIsDesktop] = useState(false);
   const [exportStatus, setExportStatus] = useState<string | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [preferences, setPreferences] = useState<DesktopPreferences | null>(null);
-  const [searchStats, setSearchStats] = useState<SearchStats | null>(null);
-  const [rebuildingSearch, setRebuildingSearch] = useState(false);
   const [lastRefreshResult, setLastRefreshResult] =
     useState<DesktopOperationResult | null>(null);
-  const [geminiKeyDraft, setGeminiKeyDraft] = useState("");
 
   useEffect(() => {
     let mounted = true;
@@ -90,14 +68,8 @@ export function DesktopControls({
     });
     void window.desktop?.data.getPreferences().then((nextPreferences) => {
       if (mounted) {
-        setPreferences(nextPreferences);
         setLastRefreshResult(nextPreferences.lastRefreshStats ?? null);
         onPreferencesLoaded?.(nextPreferences);
-      }
-    });
-    void window.desktop?.search?.stats().then((stats) => {
-      if (mounted) {
-        setSearchStats(stats);
       }
     });
     const removeRefreshListener = window.desktop?.jobs.onRefreshComplete((result) => {
@@ -115,7 +87,6 @@ export function DesktopControls({
       onRefreshComplete?.();
     });
     const removePreferencesListener = window.desktop?.preferences.onChanged((nextPreferences) => {
-      setPreferences(nextPreferences);
       setLastRefreshResult((current) => nextPreferences.lastRefreshStats ?? current);
       onPreferencesLoaded?.(nextPreferences);
     });
@@ -127,10 +98,6 @@ export function DesktopControls({
       removePreferencesListener?.();
     };
   }, []);
-
-  useEffect(() => {
-    setGeminiKeyDraft(preferences?.geminiApiKey ?? "");
-  }, [preferences?.geminiApiKey]);
 
   if (!isDesktop || !appInfo) {
     return null;
@@ -169,7 +136,6 @@ export function DesktopControls({
       : null;
     const stats = await window.desktop?.search.stats();
     setRefreshing(false);
-    setSearchStats(stats ?? null);
     setLastRefreshResult(result ?? null);
     setExportStatus(
       result
@@ -183,51 +149,10 @@ export function DesktopControls({
     onRefreshComplete?.(result ?? undefined);
   };
 
-  const savePreference = async (payload: Partial<DesktopPreferences>) => {
-    const result = await window.desktop?.data.savePreferences(payload);
-
-    if (result?.success && result.preferences) {
-      setPreferences(result.preferences);
-      onPreferencesLoaded?.(result.preferences);
-      setExportStatus("Settings saved");
-    } else {
-      setExportStatus(result?.error ?? "Settings failed");
-    }
-  };
-
-  const handleClearLearning = async () => {
-    const result = await window.desktop?.data.clearLearningProfile();
-    if (result?.success) {
-      onClearLearning?.();
-      setExportStatus("Learning cleared");
-    } else {
-      setExportStatus(result?.error ?? "Clear failed");
-    }
-  };
-
   const handlePing = async () => {
     const response = await window.desktop?.ping();
     setExportStatus(response === "pong" ? "Desktop bridge online" : "Bridge unavailable");
   };
-
-  const handleRebuildSearch = async () => {
-    setRebuildingSearch(true);
-    setExportStatus("Rebuilding search index...");
-    const result = await window.desktop?.search.rebuildIndex();
-    const stats = await window.desktop?.search.stats();
-    setRebuildingSearch(false);
-    setSearchStats(stats ?? null);
-    setExportStatus(
-      result?.success
-        ? `Indexed ${result.count ?? stats?.indexedCount ?? 0} articles`
-        : result?.error ?? "Index rebuild failed",
-    );
-    onRefreshComplete?.();
-  };
-
-  const resourceSummary = lastRefreshResult
-    ? formatResourceImpact(lastRefreshResult)
-    : null;
 
   return (
     <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
@@ -256,14 +181,12 @@ export function DesktopControls({
       >
         Import
       </button>
-      <button
-        type="button"
-        onClick={() => setSettingsOpen((current) => !current)}
+      <Link
+        href="/settings"
         className="rounded-full border border-slate-200 bg-white px-3 py-1 font-medium text-slate-700 transition hover:bg-slate-100"
-        aria-expanded={settingsOpen}
       >
         Settings
-      </button>
+      </Link>
       <button
         type="button"
         onClick={handlePing}
@@ -277,130 +200,6 @@ export function DesktopControls({
         <span className="rounded-full border border-slate-200 bg-white px-3 py-1 font-medium text-slate-700">
           {formatArticleImpact(lastRefreshResult)}
         </span>
-      ) : null}
-      {resourceSummary ? (
-        <span className="rounded-full border border-slate-200 bg-white px-3 py-1 font-medium text-slate-700">
-          {resourceSummary}
-        </span>
-      ) : null}
-      {settingsOpen && preferences ? (
-        <div className="mt-3 grid w-full gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-xs text-slate-600 shadow-sm sm:grid-cols-2">
-          <label className="space-y-1">
-            <span className="font-medium text-slate-700">Refresh interval</span>
-            <select
-              value={preferences.refreshIntervalMinutes}
-              onChange={(event) =>
-                void savePreference({ refreshIntervalMinutes: Number(event.target.value) })
-              }
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2"
-            >
-              {[15, 30, 60, 120].map((minutes) => (
-                <option key={minutes} value={minutes}>
-                  {minutes} minutes
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="space-y-1">
-            <span className="font-medium text-slate-700">Notification threshold</span>
-            <select
-              value={preferences.notificationImportanceThreshold}
-              onChange={(event) =>
-                void savePreference({
-                  notificationImportanceThreshold: Number(event.target.value),
-                })
-              }
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2"
-            >
-              {[3, 4, 5].map((value) => (
-                <option key={value} value={value}>
-                  {value}/5
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={preferences.notificationsEnabled}
-              onChange={(event) =>
-                void savePreference({ notificationsEnabled: event.target.checked })
-              }
-            />
-            <span>Notifications</span>
-          </label>
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={preferences.personalizedDefault}
-              onChange={(event) =>
-                void savePreference({ personalizedDefault: event.target.checked })
-              }
-            />
-            <span>Personalized default</span>
-          </label>
-          <label className="space-y-1 sm:col-span-2">
-            <span className="font-medium text-slate-700">Gemini API key</span>
-            <input
-              type="password"
-              value={geminiKeyDraft}
-              onChange={(event) => setGeminiKeyDraft(event.target.value)}
-              onBlur={() => {
-                if (geminiKeyDraft.trim() !== (preferences.geminiApiKey ?? "")) {
-                  void savePreference({ geminiApiKey: geminiKeyDraft.trim() });
-                }
-              }}
-              placeholder="Paste your Gemini API key"
-              autoComplete="off"
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2"
-            />
-            <span className="block text-[11px] text-slate-400">
-              Stored locally, used only by the desktop chat panel.
-            </span>
-          </label>
-          <button
-            type="button"
-            onClick={handleClearLearning}
-            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 font-medium text-slate-700 transition hover:bg-slate-100"
-          >
-            Clear learned preferences
-          </button>
-          <button
-            type="button"
-            onClick={handleRebuildSearch}
-            disabled={rebuildingSearch}
-            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 font-medium text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {rebuildingSearch ? "Rebuilding search" : "Rebuild search index"}
-          </button>
-          {searchStats ? (
-            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-slate-500 sm:col-span-2">
-              <div>
-                Indexed {searchStats.indexedCount} of {searchStats.articleCount} articles
-              </div>
-              <div>
-                Last indexed{" "}
-                {searchStats.lastIndexedAt
-                  ? new Date(searchStats.lastIndexedAt).toLocaleString()
-                  : "not recorded"}
-              </div>
-            </div>
-          ) : null}
-          {lastRefreshResult ? (
-            <div className="space-y-1 border-t border-slate-200 pt-3 text-slate-500 sm:col-span-2">
-              <div className="font-medium text-slate-700">Last refresh</div>
-              <div>{formatArticleImpact(lastRefreshResult)}</div>
-              {resourceSummary ? <div>{resourceSummary}</div> : null}
-              {lastRefreshResult.completedAt ? (
-                <div>{new Date(lastRefreshResult.completedAt).toLocaleString()}</div>
-              ) : null}
-            </div>
-          ) : null}
-          <div className="min-w-0 text-slate-500">
-            <div className="truncate">DB {preferences.dbPath}</div>
-            <div className="truncate">Data {preferences.appDataPath}</div>
-          </div>
-        </div>
       ) : null}
     </div>
   );
