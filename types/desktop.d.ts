@@ -65,6 +65,7 @@ declare global {
     notificationsEnabled: boolean;
     notificationImportanceThreshold: number;
     personalizedDefault: boolean;
+    geminiApiKey?: string;
     appDataPath?: string;
     dbPath?: string;
     lastRefreshError?: string | null;
@@ -74,6 +75,15 @@ declare global {
       tagAdjustments: Record<string, number>;
       sampleCount: number;
     };
+  };
+
+  type DesktopChatMessage = {
+    role: "user" | "assistant";
+    content: string;
+  };
+
+  type DesktopChatContext = {
+    articles?: Array<{ headline: string; summary?: string }>;
   };
 
   type DesktopScanState = {
@@ -316,6 +326,17 @@ declare global {
           clusterId: string;
           limit?: number;
         }) => Promise<DesktopMemoryHistoryEntry[]>;
+      };
+      chat?: {
+        sendMessage: (payload: {
+          message: string;
+          history?: DesktopChatMessage[];
+          context?: DesktopChatContext;
+        }) => Promise<{
+          success: boolean;
+          message?: DesktopChatMessage;
+          error?: string;
+        }>;
       };
     };
   }

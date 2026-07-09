@@ -242,6 +242,64 @@ function sanitizePreferences(input) {
     notificationsEnabled:
       typeof src.notificationsEnabled === "boolean" ? src.notificationsEnabled : undefined,
     sources: clampStringArray(src.sources, 500),
+    notificationImportanceThreshold: clampNumber(src.notificationImportanceThreshold, {
+      min: 1,
+      max: 5,
+    }),
+    personalizedDefault:
+      typeof src.personalizedDefault === "boolean" ? src.personalizedDefault : undefined,
+    geminiApiKey: clampString(src.geminiApiKey, 200),
+  };
+}
+
+const CHAT_ROLES = new Set(["user", "assistant"]);
+const MAX_CHAT_HISTORY = 40;
+const MAX_CHAT_CONTEXT_ARTICLES = 30;
+
+function sanitizeChatHistoryEntry(entry) {
+  const src = pickObject(entry);
+  const role = CHAT_ROLES.has(src.role) ? src.role : undefined;
+  const content = clampString(src.content, MAX_STRING);
+  if (!role || !content) return null;
+  return { role, content };
+}
+
+function sanitizeChatHistory(input) {
+  if (!Array.isArray(input)) return [];
+  return input
+    .slice(-MAX_CHAT_HISTORY)
+    .map(sanitizeChatHistoryEntry)
+    .filter(Boolean);
+}
+
+function sanitizeChatContextArticle(entry) {
+  const src = pickObject(entry);
+  const headline = clampString(src.headline, 400);
+  if (!headline) return null;
+  return {
+    headline,
+    summary: clampString(src.summary, 600),
+  };
+}
+
+function sanitizeChatContext(input) {
+  const src = pickObject(input);
+  return {
+    articles: Array.isArray(src.articles)
+      ? src.articles
+          .slice(0, MAX_CHAT_CONTEXT_ARTICLES)
+          .map(sanitizeChatContextArticle)
+          .filter(Boolean)
+      : [],
+  };
+}
+
+function sanitizeChatPayload(input) {
+  const src = pickObject(input);
+  return {
+    message: clampString(src.message, MAX_STRING) ?? "",
+    history: sanitizeChatHistory(src.history),
+    context: sanitizeChatContext(src.context),
   };
 }
 
@@ -349,4 +407,5 @@ module.exports = {
   sanitizeMemoryDomain,
   sanitizeMemorySnapshotPayload,
   sanitizeDomainCollapsePayload,
+  sanitizeChatPayload,
 };

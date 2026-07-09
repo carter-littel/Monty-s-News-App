@@ -16,6 +16,7 @@ import {
 } from "@/lib/feedback";
 import { updateAffinitiesFromFeedback } from "@/lib/affinity";
 import { AppShell } from "@/components/AppShell";
+import { ChatPanel } from "@/components/ChatPanel";
 import { DesktopControls } from "@/components/DesktopControls";
 import { ArticleFeed } from "@/components/ArticleFeed";
 import { DomainBreadthView } from "@/components/DomainBreadthView";
@@ -353,6 +354,7 @@ export function CommandCenterClient({
 }: CommandCenterClientProps) {
   const initialClusterData = initialStoryClusters?.length ? initialStoryClusters : initialClusters;
   const [articles, setArticles] = useState(initialArticles);
+  const [rightRailView, setRightRailView] = useState<"insights" | "chat">("insights");
   const [clusters, setClusters] = useState<StoryCluster[]>(
     initialClusterData?.length ? initialClusterData : buildClientClusters(initialArticles),
   );
@@ -1225,32 +1227,72 @@ export function CommandCenterClient({
     void window.desktop?.data.clearLearningProfile();
   };
 
+  const chatContext = useMemo<DesktopChatContext>(
+    () => ({
+      articles: articles.slice(0, 30).map((article) => ({
+        headline: article.headline,
+        summary: article.summary,
+      })),
+    }),
+    [articles],
+  );
+
   const rightRail = articles.length ? (
     <div className="space-y-4">
-      <WeeklyShifts
-        items={orderedWeeklyShifts}
-        activeTag={activeTags[0] ?? null}
-        onShiftClick={handleShiftClick}
-      />
-      <KeyInsights
-        insights={visibleInsights}
-        narrativeInsights={insightReport.narrativeInsights ?? narrativeInsights}
-        scenarios={scenarios}
-        implications={implications}
-        watchItems={watchItems}
-        activeTags={activeTags}
-        onInsightClick={handleShiftClick}
-      />
-      <TrendsPanel
-        emerging={filteredPatterns}
-        longTerm={filteredLongTerm}
-        trendSignals={trendSignals}
-        narratives={narrativeThreads}
-        connections={connections}
-        activeTags={activeTags}
-        personalizedView={personalizedView}
-        onTrendClick={setSingleTag}
-      />
+      <div className="flex gap-1 rounded-full border border-slate-200 bg-white p-1 text-xs font-medium">
+        <button
+          type="button"
+          onClick={() => setRightRailView("insights")}
+          className={`flex-1 rounded-full px-3 py-1.5 transition ${
+            rightRailView === "insights"
+              ? "bg-slate-900 text-white"
+              : "text-slate-600 hover:bg-slate-100"
+          }`}
+        >
+          Insights
+        </button>
+        <button
+          type="button"
+          onClick={() => setRightRailView("chat")}
+          className={`flex-1 rounded-full px-3 py-1.5 transition ${
+            rightRailView === "chat"
+              ? "bg-slate-900 text-white"
+              : "text-slate-600 hover:bg-slate-100"
+          }`}
+        >
+          Chat
+        </button>
+      </div>
+      {rightRailView === "insights" ? (
+        <>
+          <WeeklyShifts
+            items={orderedWeeklyShifts}
+            activeTag={activeTags[0] ?? null}
+            onShiftClick={handleShiftClick}
+          />
+          <KeyInsights
+            insights={visibleInsights}
+            narrativeInsights={insightReport.narrativeInsights ?? narrativeInsights}
+            scenarios={scenarios}
+            implications={implications}
+            watchItems={watchItems}
+            activeTags={activeTags}
+            onInsightClick={handleShiftClick}
+          />
+          <TrendsPanel
+            emerging={filteredPatterns}
+            longTerm={filteredLongTerm}
+            trendSignals={trendSignals}
+            narratives={narrativeThreads}
+            connections={connections}
+            activeTags={activeTags}
+            personalizedView={personalizedView}
+            onTrendClick={setSingleTag}
+          />
+        </>
+      ) : (
+        <ChatPanel context={chatContext} />
+      )}
     </div>
   ) : null;
 

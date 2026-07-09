@@ -42,6 +42,7 @@ const {
 const { createNotificationService } = require("./services/notificationService");
 const { createRefreshService } = require("./services/refreshService");
 const { createScheduler } = require("./services/scheduler");
+const { createChatService } = require("./services/chatService");
 const {
   createSnapshot,
   exportSnapshot,
@@ -64,6 +65,7 @@ const {
   sanitizeMemorySnapshotPayload,
   sanitizeDomainCollapsePayload,
   sanitizeScanStatePayload,
+  sanitizeChatPayload,
 } = require("./ipcValidate");
 
 const DEV_SERVER_URL = process.env.ELECTRON_RENDERER_URL ?? "http://127.0.0.1:3000";
@@ -74,6 +76,7 @@ let notificationService = null;
 let refreshService = null;
 let scheduler = null;
 let searchService = null;
+let chatService = null;
 
 function isLocalHttpUrl(value) {
   try {
@@ -591,6 +594,17 @@ ipcMain.handle("desktop:search:stats", () => {
   return searchService.stats();
 });
 
+ipcMain.handle("desktop:chat:sendMessage", async (_event, payload) => {
+  try {
+    return await chatService.sendMessage(sanitizeChatPayload(payload));
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown chat error",
+    };
+  }
+});
+
 ipcMain.handle("desktop:memory:getState", () => {
   try {
     return getMemoryState(desktopDb);
@@ -681,6 +695,9 @@ app.whenReady().then(async () => {
   scheduler = createScheduler({
     refreshService,
     getIntervalMinutes: () => getPreferences(desktopDb).refreshIntervalMinutes,
+  });
+  chatService = createChatService({
+    getApiKey: () => getPreferences(desktopDb).geminiApiKey,
   });
   createMenu();
   await createWindow();

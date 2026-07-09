@@ -3,7 +3,8 @@ import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
 
 const require = createRequire(import.meta.url);
-const { clampStringArray, sanitizeScanStatePayload } = require("./ipcValidate");
+const { clampStringArray, sanitizeScanStatePayload, sanitizeChatPayload } =
+  require("./ipcValidate");
 
 const wellFormedTeachingItem = {
   id: "article-1",
@@ -173,6 +174,79 @@ describe("sanitizeScanStatePayload", () => {
     const out = sanitizeScanStatePayload({ clusterRatings: ratings });
     expect(Object.keys(out.clusterRatings)).toHaveLength(500);
     expect(out.clusterRatings["key-0"].memberIds).toHaveLength(50);
+  });
+});
+
+describe("sanitizeChatPayload", () => {
+  it("passes a well-formed payload through", () => {
+    const out = sanitizeChatPayload({
+      message: "Summarize the top story",
+      history: [
+        { role: "user", content: "Hi" },
+        { role: "assistant", content: "Hello, what would you like to know?" },
+      ],
+      context: {
+        articles: [{ headline: "AI chips advance", summary: "New packaging tech." }],
+      },
+    });
+
+    expect(out).toEqual({
+      message: "Summarize the top story",
+      history: [
+        { role: "user", content: "Hi" },
+        { role: "assistant", content: "Hello, what would you like to know?" },
+      ],
+      context: {
+        articles: [{ headline: "AI chips advance", summary: "New packaging tech." }],
+      },
+    });
+  });
+
+  it("returns safe defaults for junk input", () => {
+    for (const input of [undefined, null, "junk", 42, ["array"]]) {
+      expect(sanitizeChatPayload(input)).toEqual({
+        message: "",
+        history: [],
+        context: { articles: [] },
+      });
+    }
+  });
+
+  it("drops history entries with an invalid role or missing content", () => {
+    const out = sanitizeChatPayload({
+      message: "hi",
+      history: [
+        { role: "system", content: "not allowed" },
+        { role: "user", content: "" },
+        { role: "user" },
+        { role: "assistant", content: "kept" },
+      ],
+    });
+
+    expect(out.history).toEqual([{ role: "assistant", content: "kept" }]);
+  });
+
+  it("caps history at 40 entries, keeping the most recent", () => {
+    const many = Array.from({ length: 60 }, (_, i) => ({
+      role: "user",
+      content: `msg-${i}`,
+    }));
+    const out = sanitizeChatPayload({ message: "hi", history: many });
+    expect(out.history).toHaveLength(40);
+    expect(out.history[0].content).toBe("msg-20");
+    expect(out.history[39].content).toBe("msg-59");
+  });
+
+  it("drops context articles without a headline and caps at 30 before filtering", () => {
+    // The 30-item cap is applied before the headline filter (same convention as
+    // sanitizeClusterSnapshotArray), so one leading invalid entry yields 29 kept.
+    const many = Array.from({ length: 40 }, (_, i) => ({ headline: `h-${i}` }));
+    const out = sanitizeChatPayload({
+      message: "hi",
+      context: { articles: [{ summary: "no headline" }, ...many] },
+    });
+    expect(out.context.articles).toHaveLength(29);
+    expect(out.context.articles[0]).toEqual({ headline: "h-0", summary: undefined });
   });
 });
 

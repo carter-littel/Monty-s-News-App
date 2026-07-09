@@ -3,6 +3,7 @@ const defaultPreferences = {
   notificationsEnabled: true,
   notificationImportanceThreshold: 5,
   personalizedDefault: false,
+  geminiApiKey: "",
 };
 
 const defaultScanState = {
@@ -66,6 +67,10 @@ function savePreferences(db, next) {
 
   if (typeof next.personalizedDefault === "boolean") {
     sanitized.personalizedDefault = next.personalizedDefault;
+  }
+
+  if (typeof next.geminiApiKey === "string") {
+    sanitized.geminiApiKey = next.geminiApiKey.trim().slice(0, 200);
   }
 
   savePreference(db, "settings", sanitized);

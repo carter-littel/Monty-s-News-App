@@ -83,4 +83,7 @@ contextBridge.exposeInMainWorld("desktop", {
     getClusterHistory: (payload) =>
       ipcRenderer.invoke("desktop:memory:getClusterHistory", payload),
   },
+  chat: {
+    sendMessage: (payload) => ipcRenderer.invoke("desktop:chat:sendMessage", payload),
+  },
 });

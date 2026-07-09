@@ -71,6 +71,7 @@ export function DesktopControls({
   const [rebuildingSearch, setRebuildingSearch] = useState(false);
   const [lastRefreshResult, setLastRefreshResult] =
     useState<DesktopOperationResult | null>(null);
+  const [geminiKeyDraft, setGeminiKeyDraft] = useState("");
 
   useEffect(() => {
     let mounted = true;
@@ -126,6 +127,10 @@ export function DesktopControls({
       removePreferencesListener?.();
     };
   }, []);
+
+  useEffect(() => {
+    setGeminiKeyDraft(preferences?.geminiApiKey ?? "");
+  }, [preferences?.geminiApiKey]);
 
   if (!isDesktop || !appInfo) {
     return null;
@@ -333,6 +338,25 @@ export function DesktopControls({
               }
             />
             <span>Personalized default</span>
+          </label>
+          <label className="space-y-1 sm:col-span-2">
+            <span className="font-medium text-slate-700">Gemini API key</span>
+            <input
+              type="password"
+              value={geminiKeyDraft}
+              onChange={(event) => setGeminiKeyDraft(event.target.value)}
+              onBlur={() => {
+                if (geminiKeyDraft.trim() !== (preferences.geminiApiKey ?? "")) {
+                  void savePreference({ geminiApiKey: geminiKeyDraft.trim() });
+                }
+              }}
+              placeholder="Paste your Gemini API key"
+              autoComplete="off"
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2"
+            />
+            <span className="block text-[11px] text-slate-400">
+              Stored locally, used only by the desktop chat panel.
+            </span>
           </label>
           <button
             type="button"
