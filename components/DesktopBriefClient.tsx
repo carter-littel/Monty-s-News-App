@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
+import { useSetChatContext } from "@/components/ChatContext";
 import type { WeeklyBrief } from "@/lib/brief";
 
 function Section({
@@ -65,6 +66,22 @@ export function DesktopBriefClient() {
       cancelled = true;
     };
   }, []);
+
+  const chatContext = useMemo<DesktopChatContext>(() => {
+    if (!brief) return { articles: [] };
+    const sections: Array<[string, string[]]> = [
+      ["Top shift", brief.top_shifts],
+      ["Emerging pattern", brief.emerging_patterns],
+      ["What to watch", brief.what_to_watch],
+      ["Teaching point", brief.teaching_points],
+    ];
+    return {
+      articles: sections
+        .flatMap(([label, items]) => items.map((item) => ({ headline: `${label}: ${item}` })))
+        .slice(0, 30),
+    };
+  }, [brief]);
+  useSetChatContext(chatContext);
 
   return (
     <AppShell activePath="/brief">

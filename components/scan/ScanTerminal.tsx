@@ -10,6 +10,7 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react";
+import { useSetChatContext } from "@/components/ChatContext";
 import { ReaderPane } from "@/components/scan/ReaderPane";
 import { SectorRail } from "@/components/scan/SectorRail";
 import { ShiftStrip } from "@/components/scan/ShiftStrip";
@@ -381,6 +382,17 @@ export function ScanTerminal() {
     if (!selectedId) return null;
     return rows.find((r) => r.id === selectedId) ?? null;
   }, [rows, selectedId]);
+
+  const chatContext = useMemo<DesktopChatContext>(
+    () => ({
+      articles: filtered.slice(0, 30).map((row) => ({
+        headline: row.headline,
+        summary: row.summary,
+      })),
+    }),
+    [filtered],
+  );
+  useSetChatContext(chatContext);
 
   // ── Counts for the rail's "Your taste" tally ──
   const counts = useMemo(() => {

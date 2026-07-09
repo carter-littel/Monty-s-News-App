@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
+import { useSetChatContext } from "@/components/ChatContext";
 import type { PatternAnalysis } from "@/lib/patterns";
 import type { ArticleDomain } from "@/lib/types";
 
@@ -97,6 +98,24 @@ export function DesktopPatternsClient() {
 
   const maxTagCount = analysis.topTags[0]?.count ?? 1;
   const maxCorrelationCount = analysis.correlations[0]?.count ?? 1;
+
+  const chatContext = useMemo<DesktopChatContext>(
+    () => ({
+      articles: [
+        ...analysis.topTags.map((entry) => ({
+          headline: `#${entry.tag}`,
+          summary: `${entry.count} mentions this week.`,
+        })),
+        ...analysis.trendingUp.map((entry) => ({
+          headline: `#${entry.tag} trending up`,
+          summary: `${entry.signal} — ${entry.current} vs ${entry.previous} (Δ${entry.delta}).`,
+        })),
+        ...analysis.insights.map((insight) => ({ headline: insight })),
+      ].slice(0, 30),
+    }),
+    [analysis],
+  );
+  useSetChatContext(chatContext);
 
   return (
     <AppShell activePath="/patterns">

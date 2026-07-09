@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
+import { useSetChatContext } from "@/components/ChatContext";
 import type { ArticleDomain } from "@/lib/types";
 
 type TrendPoint = {
@@ -148,6 +149,21 @@ export function DesktopTrendsClient() {
       cancelled = true;
     };
   }, [selectedDomain]);
+
+  const chatContext = useMemo<DesktopChatContext>(() => {
+    const toEntry = (item: LongTermTrend, direction: string) => ({
+      headline: `#${item.tag} ${direction}`,
+      summary: `Delta ${item.delta}, avg ${item.average.toFixed(1)} mentions/week.`,
+    });
+    return {
+      articles: [
+        ...trendData.rising.map((item) => toEntry(item, "rising")),
+        ...trendData.declining.map((item) => toEntry(item, "declining")),
+        ...trendData.stable.map((item) => toEntry(item, "stable")),
+      ].slice(0, 30),
+    };
+  }, [trendData]);
+  useSetChatContext(chatContext);
 
   return (
     <AppShell activePath="/trends">
