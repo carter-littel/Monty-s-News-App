@@ -322,6 +322,20 @@ function createMenu() {
       ],
     },
     {
+      label: "Edit",
+      submenu: [
+        { role: "undo" },
+        { role: "redo" },
+        { type: "separator" },
+        { role: "cut" },
+        { role: "copy" },
+        { role: "paste" },
+        ...(process.platform === "darwin" ? [{ role: "pasteAndMatchStyle" }] : []),
+        { role: "delete" },
+        { role: "selectAll" },
+      ],
+    },
+    {
       label: "View",
       submenu: [
         { role: "reload" },
