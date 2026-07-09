@@ -467,6 +467,13 @@ export function SectorRail({
               borderRadius: 4,
               border: "1px solid #1e293b",
               background: "rgba(148,163,184,0.04)",
+              // Fixed width (sized to fit "Patterns", the longest label) so
+              // all four pills read as the same size instead of hugging text.
+              width: 68,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              textAlign: "center",
             }}
           >
             {l.label}
