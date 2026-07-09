@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 function formatSignedNumber(value: number | undefined) {
@@ -35,6 +36,27 @@ function formatResourceImpact(result: DesktopOperationResult) {
   return `CPU ${impact.cpuPercent.toFixed(1)}% avg - RSS ${formatSignedNumber(
     impact.rssDeltaMb,
   )} MB - heap ${formatSignedNumber(impact.heapUsedDeltaMb)} MB`;
+}
+
+function DeveloperInfoCard() {
+  const pathname = usePathname();
+  return (
+    <section className="surface-card p-6 text-sm text-slate-500">
+      <p className="section-kicker">Developer Info</p>
+      <div className="mt-2 space-y-1">
+        <p>
+          Route <span className="font-mono text-slate-700">{pathname}</span>
+        </p>
+        <p>
+          Bundler <span className="font-mono text-slate-700">Turbopack</span>
+        </p>
+        <p>
+          Environment{" "}
+          <span className="font-mono text-slate-700">{process.env.NODE_ENV}</span>
+        </p>
+      </div>
+    </section>
+  );
 }
 
 export function SettingsPanel() {
@@ -95,9 +117,12 @@ export function SettingsPanel() {
 
   if (!isDesktop) {
     return (
-      <section className="surface-card p-6 text-sm text-slate-500">
-        Settings are only available in the desktop app.
-      </section>
+      <div className="space-y-6">
+        <section className="surface-card p-6 text-sm text-slate-500">
+          Most settings are only available in the desktop app.
+        </section>
+        <DeveloperInfoCard />
+      </div>
     );
   }
 
@@ -310,6 +335,8 @@ export function SettingsPanel() {
         <p className="mt-2 truncate">DB {preferences.dbPath}</p>
         <p className="truncate">Data {preferences.appDataPath}</p>
       </section>
+
+      <DeveloperInfoCard />
     </div>
   );
 }
