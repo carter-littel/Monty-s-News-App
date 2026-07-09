@@ -13,6 +13,8 @@ type InterestRaterProps = {
   size?: Size;
   layout?: Layout;
   showLearningHint?: boolean;
+  checked?: boolean;
+  onToggleCheck?: () => void;
 };
 
 const SIZES: Record<Size, { h: number; fs: number; px: number; gap: number }> = {
@@ -27,6 +29,8 @@ export function InterestRater({
   size = "md",
   layout = "row",
   showLearningHint = false,
+  checked,
+  onToggleCheck,
 }: InterestRaterProps) {
   const s = SIZES[size];
   const [hoveredId, setHoveredId] = useState<InterestLevel | null>(null);
@@ -89,6 +93,37 @@ export function InterestRater({
         >
           → learning
         </span>
+      ) : null}
+      {onToggleCheck ? (
+        <button
+          type="button"
+          title={checked ? "Remove from selection" : "Select for folder"}
+          aria-label={checked ? "Remove from selection" : "Select for folder"}
+          aria-pressed={Boolean(checked)}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleCheck();
+          }}
+          onKeyDown={(e) => e.stopPropagation()}
+          className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-1"
+          style={{
+            height: s.h,
+            width: layout === "col" ? "100%" : s.h,
+            padding: 0,
+            borderRadius: 6,
+            border: `1px solid ${checked ? "#0f172a" : "#e2e8f0"}`,
+            background: checked ? "#0f172a" : "#fff",
+            color: checked ? "#fff" : "#94a3b8",
+            cursor: "pointer",
+            transition: "all .12s",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: s.fs,
+          }}
+        >
+          {checked ? "✓" : ""}
+        </button>
       ) : null}
     </div>
   );

@@ -91,6 +91,7 @@ declare global {
     teachingItems?: import("@/lib/teachingPack").TeachingItem[];
     digest: boolean;
     clusterRatings: import("@/lib/clusterRatings").ClusterRatingStore;
+    folders?: import("@/lib/scanFolders").ScanFolder[];
     updatedAt?: string | null;
   };
 

@@ -40,6 +40,10 @@ export const DOMAIN_PALETTE: Record<ArticleDomain, DomainPaletteEntry> = {
 // store so the existing learning system (lib/feedback.ts) keeps working.
 export type InterestLevel = 1 | 2 | 3 | 4; // 4=Important, 3=Interesting, 2=Later, 1=Skip
 
+// "Later" (id 2) is intentionally omitted from the rendered rating options —
+// removed from the UI per product decision, but the InterestLevel/importance
+// mapping below is left untouched so legacy level-2 ratings degrade gracefully
+// (they just show as unrated) instead of requiring a data migration.
 export const INTEREST_LEVELS: ReadonlyArray<{
   id: InterestLevel;
   label: string;
@@ -48,10 +52,9 @@ export const INTEREST_LEVELS: ReadonlyArray<{
   bg: string;
   glyph: string;
 }> = [
-  { id: 4, label: "Important",      short: "Important",   color: "#0284c7", bg: "#e0f2fe", glyph: "★" },
-  { id: 3, label: "Interesting",    short: "Interesting", color: "#0f766e", bg: "#ccfbf1", glyph: "◆" },
-  { id: 2, label: "If I have time", short: "Later",       color: "#b45309", bg: "#fef3c7", glyph: "◐" },
-  { id: 1, label: "Don't care",     short: "Skip",        color: "#be123c", bg: "#fee2e2", glyph: "✕" },
+  { id: 4, label: "Important",   short: "Important",   color: "#0284c7", bg: "#e0f2fe", glyph: "★" },
+  { id: 3, label: "Interesting", short: "Interesting", color: "#0f766e", bg: "#ccfbf1", glyph: "◆" },
+  { id: 1, label: "Don't care",  short: "Skip",         color: "#be123c", bg: "#fee2e2", glyph: "✕" },
 ];
 
 const INTEREST_TO_IMPORTANCE: Record<InterestLevel, 1 | 2 | 4 | 5> = {

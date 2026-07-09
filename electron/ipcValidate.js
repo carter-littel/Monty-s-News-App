@@ -359,6 +359,31 @@ function sanitizeTeachingItemArray(input) {
   return out;
 }
 
+const MAX_SCAN_FOLDERS = 100;
+
+// Personal folders are lightweight named collections; each field is clamped
+// individually so an oversized or malformed renderer payload can't bloat or
+// corrupt the preferences row (same convention as sanitizeTeachingItemArray).
+function sanitizeScanFolderArray(input) {
+  if (!Array.isArray(input)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const entry of input.slice(0, MAX_SCAN_FOLDERS)) {
+    if (!entry || typeof entry !== "object") continue;
+    const id = clampString(entry.id, 256);
+    const name = clampString(entry.name, 200);
+    if (!id || !name || seen.has(id)) continue;
+    seen.add(id);
+    out.push({
+      id,
+      name,
+      memberIds: clampStringArrayWithLimit(entry.memberIds, 256, 500),
+      createdAt: clampString(entry.createdAt, 40) ?? new Date().toISOString(),
+    });
+  }
+  return out;
+}
+
 function sanitizeScanStatePayload(input) {
   const src = pickObject(input);
   const rawRatings = pickObject(src.clusterRatings);
@@ -386,6 +411,7 @@ function sanitizeScanStatePayload(input) {
     teachingItems: sanitizeTeachingItemArray(src.teachingItems),
     digest: Boolean(src.digest),
     clusterRatings,
+    folders: sanitizeScanFolderArray(src.folders),
   };
 }
 
@@ -403,6 +429,7 @@ module.exports = {
   sanitizeUserFeedback,
   sanitizePreferences,
   sanitizeScanStatePayload,
+  sanitizeScanFolderArray,
   sanitizeClusterIdValue,
   sanitizeMemoryDomain,
   sanitizeMemorySnapshotPayload,

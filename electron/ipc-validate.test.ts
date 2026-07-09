@@ -3,8 +3,19 @@ import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
 
 const require = createRequire(import.meta.url);
-const { clampStringArray, sanitizeScanStatePayload, sanitizeChatPayload } =
-  require("./ipcValidate");
+const {
+  clampStringArray,
+  sanitizeScanStatePayload,
+  sanitizeScanFolderArray,
+  sanitizeChatPayload,
+} = require("./ipcValidate");
+
+const wellFormedFolder = {
+  id: "folder_1",
+  name: "Deep dives",
+  memberIds: ["article-1", "article-2"],
+  createdAt: "2026-04-18T12:00:00.000Z",
+};
 
 const wellFormedTeachingItem = {
   id: "article-1",
@@ -41,6 +52,7 @@ describe("sanitizeScanStatePayload", () => {
           memberIds: ["article-1", "article-2"],
         },
       },
+      folders: [wellFormedFolder],
     };
 
     expect(sanitizeScanStatePayload(payload)).toEqual(payload);
@@ -53,6 +65,7 @@ describe("sanitizeScanStatePayload", () => {
         teachingItems: [],
         digest: false,
         clusterRatings: {},
+        folders: [],
       });
     }
   });
@@ -174,6 +187,57 @@ describe("sanitizeScanStatePayload", () => {
     const out = sanitizeScanStatePayload({ clusterRatings: ratings });
     expect(Object.keys(out.clusterRatings)).toHaveLength(500);
     expect(out.clusterRatings["key-0"].memberIds).toHaveLength(50);
+  });
+});
+
+describe("sanitizeScanFolderArray", () => {
+  it("passes well-formed folders through unchanged", () => {
+    expect(sanitizeScanFolderArray([wellFormedFolder])).toEqual([wellFormedFolder]);
+  });
+
+  it("returns an empty array for junk input", () => {
+    for (const input of [undefined, null, "junk", 42, {}]) {
+      expect(sanitizeScanFolderArray(input)).toEqual([]);
+    }
+  });
+
+  it("drops folders without an id or name and dedupes by id", () => {
+    const out = sanitizeScanFolderArray([
+      "junk",
+      null,
+      { id: "no-name" },
+      { name: "no id" },
+      wellFormedFolder,
+      { ...wellFormedFolder, name: "duplicate id is dropped" },
+    ]);
+
+    expect(out).toEqual([wellFormedFolder]);
+  });
+
+  it("coerces malformed folder fields to safe values", () => {
+    const out = sanitizeScanFolderArray([
+      {
+        id: "folder_2",
+        name: "Odd input",
+        memberIds: "nope",
+        createdAt: 12345,
+      },
+    ]);
+
+    expect(out[0].memberIds).toEqual([]);
+    expect(typeof out[0].createdAt).toBe("string");
+  });
+
+  it("caps folders at 100 entries and memberIds at 500", () => {
+    const many = Array.from({ length: 120 }, (_, i) => ({
+      id: `folder_${i}`,
+      name: `Folder ${i}`,
+      memberIds: Array.from({ length: 600 }, (_, j) => `m-${j}`),
+      createdAt: "2026-04-18T12:00:00.000Z",
+    }));
+    const out = sanitizeScanFolderArray(many);
+    expect(out).toHaveLength(100);
+    expect(out[0].memberIds).toHaveLength(500);
   });
 });
 

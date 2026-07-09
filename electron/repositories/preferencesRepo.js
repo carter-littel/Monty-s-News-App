@@ -11,6 +11,7 @@ const defaultScanState = {
   teachingItems: [],
   digest: false,
   clusterRatings: {},
+  folders: [],
   updatedAt: null,
 };
 
@@ -128,6 +129,7 @@ function saveScanState(db, next) {
       next?.clusterRatings && typeof next.clusterRatings === "object"
         ? next.clusterRatings
         : {},
+    folders: Array.isArray(next?.folders) ? next.folders : [],
     updatedAt: new Date().toISOString(),
   };
   savePreference(db, "scanState", state);

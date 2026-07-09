@@ -10,9 +10,11 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react";
-import { useSetChatContext } from "@/components/ChatContext";
+import { useSetChatContext, useOpenChat } from "@/components/ChatContext";
+import { AddToModal } from "@/components/scan/AddToModal";
 import { ReaderPane } from "@/components/scan/ReaderPane";
 import { SectorRail } from "@/components/scan/SectorRail";
+import { SelectionBanner } from "@/components/scan/SelectionBanner";
 import { ShiftStrip } from "@/components/scan/ShiftStrip";
 import { TeachingDrawer } from "@/components/scan/TeachingDrawer";
 import { TerminalRow } from "@/components/scan/TerminalRow";
@@ -31,6 +33,16 @@ import {
   saveLearningProfile,
   setUserImportance,
 } from "@/lib/feedback";
+import {
+  addRowsToFolder,
+  buildFolderLookup,
+  createFolder,
+  deleteFolder as deleteFolderFrom,
+  normalizeFolders,
+  renameFolder as renameFolderIn,
+  rowFolderIds,
+  type ScanFolder,
+} from "@/lib/scanFolders";
 import {
   buildScanViewModel,
   getDomain,
@@ -56,6 +68,7 @@ const TEACHING_STORAGE_KEY = "scan.teaching.v2";
 const LEGACY_TEACHING_STORAGE_KEY = "scan.teaching.v1";
 const DIGEST_STORAGE_KEY = "scan.digest.v1";
 const CLUSTER_RATING_STORAGE_KEY = "scan.cluster-rating.v1";
+const FOLDERS_STORAGE_KEY = "scan.folders.v1";
 
 function readLocalStorageJson<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -78,12 +91,14 @@ function buildScanStatePayload(
   teaching: TeachingItem[],
   digest: boolean,
   clusterRatings: ClusterRatingStore,
+  folders: ScanFolder[],
 ) {
   return {
     teachingIds: teaching.map((item) => item.id),
     teachingItems: teaching,
     digest,
     clusterRatings,
+    folders,
   };
 }
 
@@ -156,6 +171,13 @@ export function ScanTerminal() {
     CLUSTER_RATING_STORAGE_KEY,
     {},
   );
+  const [folders, setFolders] = usePersisted<ScanFolder[]>(FOLDERS_STORAGE_KEY, []);
+
+  // Multi-select for the "add to folder" flow — transient, not persisted.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
+  const [addToModalOpen, setAddToModalOpen] = useState(false);
+  const openChat = useOpenChat();
 
   // Refs that mirror the latest values so rateRow can read them without
   // listing articles/feedbackMap in its useCallback deps — re-binding rateRow
@@ -222,13 +244,17 @@ export function ScanTerminal() {
         const nextRatings = storedScanState?.updatedAt
           ? storedScanState.clusterRatings ?? {}
           : readLocalStorageJson<ClusterRatingStore>(CLUSTER_RATING_STORAGE_KEY, {});
+        const nextFolders = storedScanState?.updatedAt
+          ? normalizeFolders(storedScanState.folders)
+          : readLocalStorageJson<ScanFolder[]>(FOLDERS_STORAGE_KEY, []);
         setTeaching(nextTeaching);
         setDigest(nextDigest);
         setClusterRatings(nextRatings);
+        setFolders(nextFolders);
         // Seed the save-effect snapshot so loading by itself doesn't rewrite
         // scanState (updatedAt should mean "last user edit", not "last load").
         lastSavedScanRef.current = JSON.stringify(
-          buildScanStatePayload(nextTeaching, nextDigest, nextRatings),
+          buildScanStatePayload(nextTeaching, nextDigest, nextRatings, nextFolders),
         );
         // A null state means the IPC read itself failed. Leave saving
         // disabled for the session rather than risk overwriting the DB
@@ -245,7 +271,7 @@ export function ScanTerminal() {
     } finally {
       setLoading(false);
     }
-  }, [setClusterRatings, setDigest, setTeaching]);
+  }, [setClusterRatings, setDigest, setFolders, setTeaching]);
 
   useEffect(() => {
     void loadData();
@@ -261,7 +287,7 @@ export function ScanTerminal() {
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.desktop?.scan || !desktopScanLoaded) return;
-    const payload = buildScanStatePayload(teaching, digest, clusterRatings);
+    const payload = buildScanStatePayload(teaching, digest, clusterRatings, folders);
     const serialized = JSON.stringify(payload);
     if (serialized === lastSavedScanRef.current) {
       // State matches what's already persisted — nothing pending to flush.
@@ -283,7 +309,7 @@ export function ScanTerminal() {
     flushScanSaveRef.current = save;
     const timeout = window.setTimeout(save, 150);
     return () => window.clearTimeout(timeout);
-  }, [clusterRatings, desktopScanLoaded, digest, teaching]);
+  }, [clusterRatings, desktopScanLoaded, digest, folders, teaching]);
 
   // Closing the window inside the debounce window shouldn't drop the edit.
   useEffect(() => {
@@ -365,10 +391,24 @@ export function ScanTerminal() {
   }, [rows, selectedId]);
 
   // ── Filter / sort ──
+  // "important"/"interesting" are virtual folder ids backed by the existing
+  // rating system; anything else is a real ScanFolder id. A folder filter is
+  // mutually exclusive with domain/tag filtering (matches the reference's
+  // "selectedDomain vs folder" convention).
+  const folderLookup = useMemo(() => buildFolderLookup(folders), [folders]);
+
   const filtered = useMemo(() => {
     let xs = rows;
-    if (activeDomain !== "All") xs = xs.filter((r) => r.domain === activeDomain);
-    if (activeTag) xs = xs.filter((r) => r.tags.includes(activeTag));
+    if (activeFolderId === "important") {
+      xs = xs.filter((r) => (interestByRowId.get(r.id) ?? 0) === 4);
+    } else if (activeFolderId === "interesting") {
+      xs = xs.filter((r) => (interestByRowId.get(r.id) ?? 0) === 3);
+    } else if (activeFolderId) {
+      xs = xs.filter((r) => rowFolderIds(r, folderLookup).has(activeFolderId));
+    } else {
+      if (activeDomain !== "All") xs = xs.filter((r) => r.domain === activeDomain);
+      if (activeTag) xs = xs.filter((r) => r.tags.includes(activeTag));
+    }
     if (digest) xs = xs.filter((r) => (interestByRowId.get(r.id) ?? 0) !== 1);
     return [...xs].sort((a, b) => {
       const ai = interestByRowId.get(a.id) ?? 0;
@@ -376,7 +416,7 @@ export function ScanTerminal() {
       if (ai !== bi) return bi - ai;
       return b.impact - a.impact;
     });
-  }, [rows, activeDomain, activeTag, digest, interestByRowId]);
+  }, [rows, activeFolderId, activeDomain, activeTag, digest, interestByRowId, folderLookup]);
 
   const selected = useMemo(() => {
     if (!selectedId) return null;
@@ -396,12 +436,11 @@ export function ScanTerminal() {
 
   // ── Counts for the rail's "Your taste" tally ──
   const counts = useMemo(() => {
-    const c = { important: 0, interesting: 0, later: 0, skip: 0, unrated: 0 };
+    const c = { important: 0, interesting: 0, skip: 0, unrated: 0 };
     for (const r of rows) {
       const v = interestByRowId.get(r.id);
       if (v === 4) c.important++;
       else if (v === 3) c.interesting++;
-      else if (v === 2) c.later++;
       else if (v === 1) c.skip++;
       else c.unrated++;
     }
@@ -485,6 +524,92 @@ export function ScanTerminal() {
     setActiveTag((prev) => (prev === t ? null : t));
   }, []);
 
+  // ── Multi-select + folders ──
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
+
+  const selectedRows = useMemo(
+    () => rows.filter((r) => selectedIds.has(r.id)),
+    [rows, selectedIds],
+  );
+
+  // Bulk-rate the current selection through the existing rateRow path — reuses
+  // its cluster-rating + importance-feedback + learning-profile side effects.
+  const batchRate = useCallback(
+    (level: InterestLevel) => {
+      for (const row of selectedRows) rateRow(row, level);
+      clearSelection();
+    },
+    [selectedRows, rateRow, clearSelection],
+  );
+
+  const addSelectedToFolder = useCallback(
+    (folderId: string) => {
+      setFolders((prev) =>
+        prev.map((folder) =>
+          folder.id === folderId ? addRowsToFolder(folder, selectedRows) : folder,
+        ),
+      );
+      clearSelection();
+      setAddToModalOpen(false);
+    },
+    [selectedRows, setFolders, clearSelection],
+  );
+
+  const createFolderAndAdd = useCallback(
+    (name: string) => {
+      const folder = addRowsToFolder(createFolder(name, new Date().toISOString()), selectedRows);
+      setFolders((prev) => [...prev, folder]);
+      clearSelection();
+      setAddToModalOpen(false);
+    },
+    [selectedRows, setFolders, clearSelection],
+  );
+
+  const onRenameFolder = useCallback(
+    (id: string, name: string) => {
+      setFolders((prev) => renameFolderIn(prev, id, name));
+    },
+    [setFolders],
+  );
+
+  const onDeleteFolder = useCallback(
+    (id: string) => {
+      setFolders((prev) => deleteFolderFrom(prev, id));
+      setActiveFolderId((current) => (current === id ? null : current));
+    },
+    [setFolders],
+  );
+
+  const onFolderSelect = useCallback((id: string | null) => {
+    setActiveFolderId((current) => (current === id ? null : id));
+    setActiveDomain("All");
+  }, []);
+
+  const handleAddImportant = useCallback(() => {
+    batchRate(4);
+    setAddToModalOpen(false);
+  }, [batchRate]);
+
+  const handleAddInteresting = useCallback(() => {
+    batchRate(3);
+    setAddToModalOpen(false);
+  }, [batchRate]);
+
+  const handleSummarizeSelection = useCallback(() => {
+    openChat({
+      articles: selectedRows.map((row) => ({ headline: row.headline, summary: row.summary })),
+    });
+  }, [openChat, selectedRows]);
+
   // ── Keyboard shortcuts (single-bind) ──
   // All values the handler reads are mirrored in keyStateRef, so the
   // window listener attaches once on mount instead of every keystroke.
@@ -492,23 +617,27 @@ export function ScanTerminal() {
     filtered: ScanRow[];
     selected: ScanRow | null;
     drawerOpen: boolean;
+    hasSelection: boolean;
     rateRow: (row: ScanRow, next: InterestLevel | null) => void;
     toggleTeaching: (row: ScanRow) => void;
     setSelectedId: Dispatch<SetStateAction<string | null>>;
     setActiveTag: Dispatch<SetStateAction<string | null>>;
     setDrawerOpen: Dispatch<SetStateAction<boolean>>;
     setDigest: Dispatch<SetStateAction<boolean>>;
+    clearSelection: () => void;
   };
   const keyStateRef = useRef<KeyState>({
     filtered,
     selected,
     drawerOpen,
+    hasSelection: selectedIds.size > 0,
     rateRow,
     toggleTeaching,
     setSelectedId,
     setActiveTag,
     setDrawerOpen,
     setDigest,
+    clearSelection,
   });
   // Sync the latest values into the ref after render. Done in an effect (not
   // an assignment during render) so it's safe under concurrent rendering.
@@ -517,12 +646,14 @@ export function ScanTerminal() {
       filtered,
       selected,
       drawerOpen,
+      hasSelection: selectedIds.size > 0,
       rateRow,
       toggleTeaching,
       setSelectedId,
       setActiveTag,
       setDrawerOpen,
       setDigest,
+      clearSelection,
     };
   });
 
@@ -556,7 +687,7 @@ export function ScanTerminal() {
         e.preventDefault();
         return;
       }
-      if (["1", "2", "3", "4"].includes(e.key) && s.selected) {
+      if (["1", "3", "4"].includes(e.key) && s.selected) {
         s.rateRow(s.selected, Number(e.key) as InterestLevel);
         e.preventDefault();
         return;
@@ -573,6 +704,7 @@ export function ScanTerminal() {
       }
       if (e.key === "Escape") {
         if (s.drawerOpen) s.setDrawerOpen(false);
+        else if (s.hasSelection) s.clearSelection();
         else s.setActiveTag(null);
       }
     }
@@ -610,11 +742,19 @@ export function ScanTerminal() {
       <SectorRail
         totalCount={rows.length}
         activeDomain={activeDomain}
-        onDomainChange={(d) => setActiveDomain(d)}
+        onDomainChange={(d) => {
+          setActiveFolderId(null);
+          setActiveDomain(d);
+        }}
         domainStats={domainStats}
         counts={counts}
         teachingCount={teaching.length}
         onOpenTeaching={() => setDrawerOpen(true)}
+        folders={folders}
+        activeFolderId={activeFolderId}
+        onFolderSelect={onFolderSelect}
+        onRenameFolder={onRenameFolder}
+        onDeleteFolder={onDeleteFolder}
       />
 
       <main
@@ -716,6 +856,14 @@ export function ScanTerminal() {
             padding: digest ? "8px 24px 32px" : "16px 24px 32px",
           }}
         >
+          {selectedIds.size > 0 ? (
+            <SelectionBanner
+              count={selectedIds.size}
+              onSummarize={handleSummarizeSelection}
+              onAddTo={() => setAddToModalOpen(true)}
+              onClear={clearSelection}
+            />
+          ) : null}
           {loadError ? (
             <div
               role="alert"
@@ -781,8 +929,10 @@ export function ScanTerminal() {
                   selected={selectedId === r.id}
                   interest={interestForRow(r)}
                   inTeaching={teachingItemIdByRowId.has(r.id)}
+                  checked={selectedIds.has(r.id)}
                   onSelect={() => setSelectedId(r.id)}
                   onRate={(v) => rateRow(r, v)}
+                  onToggleCheck={() => toggleSelect(r.id)}
                 />
               ))}
             </div>
@@ -795,9 +945,11 @@ export function ScanTerminal() {
                   selected={selectedId === r.id}
                   interest={interestForRow(r)}
                   inTeaching={teachingItemIdByRowId.has(r.id)}
+                  checked={selectedIds.has(r.id)}
                   onSelect={() => setSelectedId(r.id)}
                   onRate={(v) => rateRow(r, v)}
                   onTag={handleTagToggle}
+                  onToggleCheck={() => toggleSelect(r.id)}
                 />
               ))}
             </div>
@@ -813,6 +965,8 @@ export function ScanTerminal() {
         onAddTeaching={() => selected && toggleTeaching(selected)}
         inTeaching={Boolean(selected && teachingItemIdByRowId.has(selected.id))}
         width={440}
+        checked={Boolean(selected && selectedIds.has(selected.id))}
+        onToggleCheck={() => selected && toggleSelect(selected.id)}
       />
 
       <TeachingDrawer
@@ -821,6 +975,17 @@ export function ScanTerminal() {
         items={teaching}
         rows={rows}
         onRemove={removeTeaching}
+      />
+
+      <AddToModal
+        open={addToModalOpen}
+        selectionCount={selectedIds.size}
+        folders={folders}
+        onClose={() => setAddToModalOpen(false)}
+        onAddImportant={handleAddImportant}
+        onAddInteresting={handleAddInteresting}
+        onAddToFolder={addSelectedToFolder}
+        onCreateFolder={createFolderAndAdd}
       />
     </div>
   );

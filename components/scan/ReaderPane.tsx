@@ -16,6 +16,8 @@ type ReaderPaneProps = {
   onAddTeaching: () => void;
   inTeaching: boolean;
   width?: number;
+  checked?: boolean;
+  onToggleCheck?: () => void;
 };
 
 export function ReaderPane({
@@ -26,6 +28,8 @@ export function ReaderPane({
   onAddTeaching,
   inTeaching,
   width = 460,
+  checked,
+  onToggleCheck,
 }: ReaderPaneProps) {
   if (!row) {
     return (
@@ -66,9 +70,9 @@ export function ReaderPane({
               <kbd className="scan-kbd">j / k</kbd> next / prev
             </div>
             <div>
-              <kbd className="scan-kbd">1–4</kbd> rate interest
+              <kbd className="scan-kbd">1 / 3 / 4</kbd> rate interest
               <div style={{ paddingLeft: 30, marginTop: 2, opacity: 0.85 }}>
-                4 ★ Important · 3 ◆ Interesting · 2 ◐ Later · 1 ✕ Skip
+                4 ★ Important · 3 ◆ Interesting · 1 ✕ Skip
               </div>
             </div>
             <div>
@@ -189,15 +193,15 @@ export function ReaderPane({
           <div
             style={{
               padding: "14px 16px",
-              background: "#f8fafc",
-              border: "1px solid #e2e8f0",
+              background: "#f0fdf4",
+              border: "1px solid #dcfce7",
               borderRadius: 10,
               marginBottom: 18,
             }}
           >
             <div
               className="font-bold uppercase tracking-[0.12em]"
-              style={{ fontSize: 11, color: "#0f766e", marginBottom: 10 }}
+              style={{ fontSize: 11, color: "#15803d", marginBottom: 10 }}
             >
               Why it matters
             </div>
@@ -208,11 +212,11 @@ export function ReaderPane({
                 <li
                   key={i}
                   className="flex gap-2.5"
-                  style={{ fontSize: 13, lineHeight: 1.55, color: "#1e293b" }}
+                  style={{ fontSize: 13, lineHeight: 1.55, color: "#14532d" }}
                 >
                   <span
                     className="font-mono font-bold shrink-0"
-                    style={{ color: "#0f766e" }}
+                    style={{ color: "#15803d" }}
                   >
                     —
                   </span>
@@ -228,8 +232,8 @@ export function ReaderPane({
           className="flex items-center gap-3.5"
           style={{
             padding: "10px 14px",
-            background: "#fff",
-            border: "1px solid #e2e8f0",
+            background: "#fef2f2",
+            border: "1px solid #fee2e2",
             borderRadius: 10,
             marginBottom: 18,
           }}
@@ -425,7 +429,14 @@ export function ReaderPane({
           >
             How interested are you?
           </div>
-          <InterestRater value={interest} onChange={setInterest} size="md" showLearningHint />
+          <InterestRater
+            value={interest}
+            onChange={setInterest}
+            size="md"
+            showLearningHint
+            checked={checked}
+            onToggleCheck={onToggleCheck}
+          />
           <p style={{ margin: "10px 0 0", fontSize: 11, color: "#64748b", lineHeight: 1.55 }}>
             The system learns from your ratings. Tags and domains you mark <b>Important</b> rise;{" "}
             <b>Skip</b> domains fade.

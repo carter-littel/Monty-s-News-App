@@ -14,9 +14,11 @@ type TerminalRowProps = {
   selected: boolean;
   interest: InterestLevel | null;
   inTeaching: boolean;
+  checked?: boolean;
   onSelect: () => void;
   onRate: (next: InterestLevel | null) => void;
   onTag: (tag: string) => void;
+  onToggleCheck?: () => void;
 };
 
 function TerminalRowImpl({
@@ -24,16 +26,20 @@ function TerminalRowImpl({
   selected,
   interest,
   inTeaching,
+  checked,
   onSelect,
   onRate,
   onTag,
+  onToggleCheck,
 }: TerminalRowProps) {
   const d = getDomain(row.domain);
   const dim = interest === 1; // Skip → fade
   const elev = interest === 4; // Important → emphasize
 
-  const borderColor = selected ? d.color : elev ? "#0284c7" : "#e2e8f0";
-  const leftColor = selected ? d.color : elev ? "#0284c7" : d.color;
+  // Selected-in-reader gets a red accent (matches the reference design);
+  // the domain color stays reserved for the chip/dot instead.
+  const borderColor = selected ? "#fecaca" : elev ? "#0284c7" : "#e2e8f0";
+  const leftColor = selected ? "#f87171" : elev ? "#0284c7" : d.color;
   const sparkColor = row.trendDir === "up" ? "#047857" : row.trendDir === "down" ? "#be123c" : "#64748b";
 
   const style: CSSProperties = {
@@ -176,7 +182,14 @@ function TerminalRowImpl({
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.stopPropagation()}
       >
-        <InterestRater value={interest} onChange={onRate} size="sm" layout="col" />
+        <InterestRater
+          value={interest}
+          onChange={onRate}
+          size="sm"
+          layout="col"
+          checked={checked}
+          onToggleCheck={onToggleCheck}
+        />
       </div>
     </article>
   );

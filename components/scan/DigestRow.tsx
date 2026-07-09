@@ -11,8 +11,10 @@ type DigestRowProps = {
   selected: boolean;
   interest: InterestLevel | null;
   inTeaching: boolean;
+  checked?: boolean;
   onSelect: () => void;
   onRate: (next: InterestLevel | null) => void;
+  onToggleCheck?: () => void;
 };
 
 const QUICK_BTNS: Array<{ v: InterestLevel; sym: string; color: string }> = [
@@ -26,8 +28,10 @@ function DigestRowImpl({
   selected,
   interest,
   inTeaching,
+  checked,
   onSelect,
   onRate,
+  onToggleCheck,
 }: DigestRowProps) {
   const d = getDomain(row.domain);
   const symbol =
@@ -53,7 +57,9 @@ function DigestRowImpl({
     // hover:bg-slate-50 utility on the className below.
     background: selected ? "#f0f9ff" : undefined,
     cursor: "pointer",
-    borderLeft: `3px solid ${selected ? d.color : "transparent"}`,
+    // Selected-in-reader gets a red accent (matches the reference design);
+    // the domain color stays reserved for the dot/label instead.
+    borderLeft: `3px solid ${selected ? "#f87171" : "transparent"}`,
     transition: "background .1s",
   };
 
@@ -187,6 +193,30 @@ function DigestRowImpl({
             {b.sym}
           </button>
         ))}
+        {onToggleCheck ? (
+          <button
+            type="button"
+            title={checked ? "Remove from selection" : "Select for folder"}
+            aria-label={checked ? "Remove from selection" : "Select for folder"}
+            aria-pressed={checked}
+            onClick={onToggleCheck}
+            style={{
+              width: 22,
+              height: 22,
+              padding: 0,
+              border: `1px solid ${checked ? "#0f172a" : "#e2e8f0"}`,
+              background: checked ? "#0f172a" : "#fff",
+              color: checked ? "#fff" : "#94a3b8",
+              borderRadius: 4,
+              cursor: "pointer",
+              fontSize: 11,
+              fontWeight: 700,
+              transition: "all .1s",
+            }}
+          >
+            {checked ? "✓" : ""}
+          </button>
+        ) : null}
       </div>
     </div>
   );
