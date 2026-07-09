@@ -1,4 +1,6 @@
-const GEMINI_MODEL = "gemini-2.0-flash";
+// flash-lite trades a bit of quality for a meaningfully higher free-tier
+// quota than the full flash model — worth it for a chat sidebar.
+const GEMINI_MODEL = "gemini-2.0-flash-lite";
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta";
 const CHAT_TIMEOUT_MS = 30000;
 
