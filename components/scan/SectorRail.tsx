@@ -444,14 +444,17 @@ export function SectorRail({
 
       {/* Hub footer — nav back to other tabs since we replace the AppShell.
           Left padding clears the floating Settings button (fixed, bottom-left,
-          16px edge offset + 40px icon), leaving an even ~16px gap on both
-          sides of the icon: edge → icon → links. */}
+          20px edge offset + 40px icon + 16px gap). The pills only fit one per
+          row at this rail width, so justifyContent centers each row within
+          the remaining space out to the rail's right edge (where the main
+          article column begins), instead of hugging the left clearance line. */}
       <div
         style={{
           borderTop: "1px solid #1e293b",
-          padding: "8px 12px 12px 72px",
+          padding: "8px 12px 12px 76px",
           display: "flex",
           flexWrap: "wrap",
+          justifyContent: "center",
           gap: 4,
         }}
       >

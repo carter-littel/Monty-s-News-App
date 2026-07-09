@@ -9,7 +9,7 @@ export function SettingsButton() {
       aria-label="Open settings"
       style={{
         position: "fixed",
-        left: 16,
+        left: 20,
         bottom: 16,
         width: 40,
         height: 40,
