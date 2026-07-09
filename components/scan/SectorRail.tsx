@@ -444,11 +444,12 @@ export function SectorRail({
 
       {/* Hub footer — nav back to other tabs since we replace the AppShell.
           Left padding clears the floating Settings button (fixed, bottom-left,
-          ~60px footprint) so the links don't sit underneath it. */}
+          16px edge offset + 40px icon), leaving an even ~16px gap on both
+          sides of the icon: edge → icon → links. */}
       <div
         style={{
           borderTop: "1px solid #1e293b",
-          padding: "8px 12px 12px 64px",
+          padding: "8px 12px 12px 72px",
           display: "flex",
           flexWrap: "wrap",
           gap: 4,
