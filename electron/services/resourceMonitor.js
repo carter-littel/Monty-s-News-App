@@ -1,7 +1,15 @@
 const os = require("node:os");
 
-const DEFAULT_WARNING_FREE_MEMORY_MB = 768;
-const DEFAULT_MIN_FREE_MEMORY_MB = 256;
+// os.freemem() reports literal free pages, not "available" memory. macOS in
+// particular deliberately keeps this number low by design — it opportunistically
+// fills idle RAM with reclaimable disk cache — so a perfectly healthy Mac with
+// plenty of headroom routinely reads well under 768 MB "free" here. The old
+// 768/256 MB defaults were tuned as if this were a true availability metric and
+// false-positived into aborting refreshes on ordinary laptops. These floors are
+// intentionally low so the safeguard only fires for genuinely critical
+// conditions instead of normal macOS memory management.
+const DEFAULT_WARNING_FREE_MEMORY_MB = 256;
+const DEFAULT_MIN_FREE_MEMORY_MB = 64;
 const DEFAULT_WARNING_PROCESS_RSS_MB = 1024;
 const DEFAULT_MAX_PROCESS_RSS_MB = 1536;
 const DEFAULT_MEMORY_RECOVERY_WAIT_MS = 2500;
