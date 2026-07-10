@@ -60,12 +60,19 @@ declare global {
     memoryBreaks?: number;
   };
 
+  type ChatProvider = "claude" | "gemini" | "openai";
+
   type DesktopPreferences = {
     refreshIntervalMinutes: number;
     notificationsEnabled: boolean;
     notificationImportanceThreshold: number;
     personalizedDefault: boolean;
     geminiApiKey?: string;
+    geminiEnabled?: boolean;
+    claudeApiKey?: string;
+    claudeEnabled?: boolean;
+    openaiApiKey?: string;
+    openaiEnabled?: boolean;
     appDataPath?: string;
     dbPath?: string;
     lastRefreshError?: string | null;
@@ -75,6 +82,14 @@ declare global {
       tagAdjustments: Record<string, number>;
       sampleCount: number;
     };
+  };
+
+  type DesktopCustomSource = {
+    id: number;
+    name: string;
+    url: string;
+    category: string;
+    createdAt: string;
   };
 
   type DesktopChatMessage = {
@@ -330,6 +345,7 @@ declare global {
       };
       chat?: {
         sendMessage: (payload: {
+          provider: ChatProvider;
           message: string;
           history?: DesktopChatMessage[];
           context?: DesktopChatContext;
@@ -338,6 +354,11 @@ declare global {
           message?: DesktopChatMessage;
           error?: string;
         }>;
+      };
+      sources: {
+        list: () => Promise<DesktopCustomSource[]>;
+        remove: (id: number) => Promise<{ success: boolean; error?: string }>;
+        onChanged: (callback: (sources: DesktopCustomSource[]) => void) => () => void;
       };
     };
   }

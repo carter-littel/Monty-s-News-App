@@ -21,8 +21,10 @@
     "test": "npm run rebuild:node && vitest run"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.110.0",
     "better-sqlite3": "^12.9.0",
     "next": "^16.2.4",
+    "openai": "^6.46.0",
     "pg": "^8.20.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

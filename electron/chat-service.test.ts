@@ -113,4 +113,176 @@ describe("chatService.sendMessage", () => {
 
     expect(result).toEqual({ success: false, error: "Response blocked: SAFETY" });
   });
+
+  it("executes a tool call and sends the function response back to finish the turn", async () => {
+    const functionCallResponse = jsonResponse({
+      candidates: [
+        {
+          content: {
+            role: "model",
+            parts: [
+              {
+                functionCall: {
+                  name: "add_rss_feed",
+                  args: { url: "https://example.com/feed", name: "Example", category: "General" },
+                },
+              },
+            ],
+          },
+        },
+      ],
+    });
+    const finalResponse = jsonResponse({
+      candidates: [{ content: { parts: [{ text: "Added Example's feed." }] } }],
+    });
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(functionCallResponse)
+      .mockResolvedValueOnce(finalResponse);
+
+    const toolExecutor = vi.fn().mockResolvedValue({ success: true, message: "Added." });
+    const service = createChatService({
+      getApiKey: () => "test-key",
+      fetchImpl,
+      toolExecutors: { add_rss_feed: toolExecutor },
+    });
+
+    const result = await service.sendMessage({ message: "add example.com's feed", history: [] });
+
+    expect(toolExecutor).toHaveBeenCalledWith({
+      url: "https://example.com/feed",
+      name: "Example",
+      category: "General",
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+
+    const secondBody = JSON.parse(fetchImpl.mock.calls[1][1].body);
+    expect(secondBody.contents.at(-1)).toEqual({
+      role: "user",
+      parts: [{ functionResponse: { name: "add_rss_feed", response: { result: "Added." } } }],
+    });
+
+    expect(result).toEqual({
+      success: true,
+      message: { role: "assistant", content: "Added Example's feed." },
+    });
+  });
+
+  it("gives up after too many tool-call iterations", async () => {
+    const functionCallResponse = jsonResponse({
+      candidates: [
+        {
+          content: {
+            parts: [{ functionCall: { name: "add_rss_feed", args: { url: "https://x.com/feed" } } }],
+          },
+        },
+      ],
+    });
+    const fetchImpl = vi.fn().mockResolvedValue(functionCallResponse);
+    const toolExecutor = vi.fn().mockResolvedValue({ success: true, message: "Added." });
+    const service = createChatService({
+      getApiKey: () => "test-key",
+      fetchImpl,
+      toolExecutors: { add_rss_feed: toolExecutor },
+    });
+
+    const result = await service.sendMessage({ message: "add feeds forever", history: [] });
+
+    expect(result).toEqual({
+      success: false,
+      error: "Gemini made too many tool calls without finishing.",
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(4);
+  });
+
+  it("declares both the add and list tools to the API", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse({ candidates: [{ content: { parts: [{ text: "ok" }] } }] }),
+    );
+    const service = createChatService({ getApiKey: () => "test-key", fetchImpl });
+
+    await service.sendMessage({ message: "hi", history: [] });
+
+    const body = JSON.parse(fetchImpl.mock.calls[0][1].body);
+    const names = body.tools[0].functionDeclarations.map((decl) => decl.name);
+    expect(names).toEqual(["add_rss_feed", "list_rss_feeds"]);
+  });
+});
+
+describe("chatService.sendMessage provider dispatch", () => {
+  it("dispatches to the claude sender when provider is claude", async () => {
+    const claudeSender = vi.fn().mockResolvedValue({
+      success: true,
+      message: { role: "assistant", content: "hi from claude" },
+    });
+    const service = createChatService({ getApiKey: () => "key", claudeSender });
+
+    const result = await service.sendMessage({
+      provider: "claude",
+      message: "hi",
+      history: [],
+      context: { articles: [] },
+    });
+
+    expect(claudeSender).toHaveBeenCalledWith({
+      apiKey: "key",
+      message: "hi",
+      history: [],
+      context: { articles: [] },
+      toolExecutors: {},
+    });
+    expect(result).toEqual({ success: true, message: { role: "assistant", content: "hi from claude" } });
+  });
+
+  it("dispatches to the openai sender when provider is openai", async () => {
+    const openaiSender = vi.fn().mockResolvedValue({
+      success: true,
+      message: { role: "assistant", content: "hi from chatgpt" },
+    });
+    const service = createChatService({ getApiKey: () => "key", openaiSender });
+
+    const result = await service.sendMessage({ provider: "openai", message: "hi", history: [] });
+
+    expect(openaiSender).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ success: true, message: { role: "assistant", content: "hi from chatgpt" } });
+  });
+
+  it("defaults to gemini when provider is missing or invalid", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse({ candidates: [{ content: { parts: [{ text: "gemini reply" }] } }] }),
+    );
+    const claudeSender = vi.fn();
+    const openaiSender = vi.fn();
+    const service = createChatService({ getApiKey: () => "key", fetchImpl, claudeSender, openaiSender });
+
+    const result = await service.sendMessage({ provider: "not-a-real-provider", message: "hi" });
+
+    expect(claudeSender).not.toHaveBeenCalled();
+    expect(openaiSender).not.toHaveBeenCalled();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ success: true, message: { role: "assistant", content: "gemini reply" } });
+  });
+
+  it("reports a provider-specific error when the key is missing", async () => {
+    const getApiKey = (provider) => (provider === "claude" ? "" : "key");
+    const service = createChatService({ getApiKey });
+
+    const claudeResult = await service.sendMessage({ provider: "claude", message: "hi" });
+    expect(claudeResult).toEqual({
+      success: false,
+      error: "No Claude API key configured. Add one in Settings.",
+    });
+
+    const openaiSender = vi.fn();
+    const service2 = createChatService({
+      getApiKey: (provider) => (provider === "openai" ? "" : "key"),
+      openaiSender,
+    });
+    const openaiResult = await service2.sendMessage({ provider: "openai", message: "hi" });
+    expect(openaiResult).toEqual({
+      success: false,
+      error: "No ChatGPT API key configured. Add one in Settings.",
+    });
+    expect(openaiSender).not.toHaveBeenCalled();
+  });
 });

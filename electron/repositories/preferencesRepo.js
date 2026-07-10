@@ -4,6 +4,11 @@ const defaultPreferences = {
   notificationImportanceThreshold: 5,
   personalizedDefault: false,
   geminiApiKey: "",
+  geminiEnabled: true,
+  claudeApiKey: "",
+  claudeEnabled: false,
+  openaiApiKey: "",
+  openaiEnabled: false,
 };
 
 const defaultScanState = {
@@ -72,6 +77,26 @@ function savePreferences(db, next) {
 
   if (typeof next.geminiApiKey === "string") {
     sanitized.geminiApiKey = next.geminiApiKey.trim().slice(0, 200);
+  }
+
+  if (typeof next.geminiEnabled === "boolean") {
+    sanitized.geminiEnabled = next.geminiEnabled;
+  }
+
+  if (typeof next.claudeApiKey === "string") {
+    sanitized.claudeApiKey = next.claudeApiKey.trim().slice(0, 200);
+  }
+
+  if (typeof next.claudeEnabled === "boolean") {
+    sanitized.claudeEnabled = next.claudeEnabled;
+  }
+
+  if (typeof next.openaiApiKey === "string") {
+    sanitized.openaiApiKey = next.openaiApiKey.trim().slice(0, 200);
+  }
+
+  if (typeof next.openaiEnabled === "boolean") {
+    sanitized.openaiEnabled = next.openaiEnabled;
   }
 
   savePreference(db, "settings", sanitized);

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-export function useChatSession(context: DesktopChatContext | undefined) {
+export function useChatSession(provider: ChatProvider, context: DesktopChatContext | undefined) {
   const [messages, setMessages] = useState<DesktopChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -21,6 +21,7 @@ export function useChatSession(context: DesktopChatContext | undefined) {
     setError(null);
 
     const result = await window.desktop.chat.sendMessage({
+      provider,
       message: trimmed,
       history,
       context,

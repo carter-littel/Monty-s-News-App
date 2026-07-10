@@ -24,6 +24,7 @@ const {
   setLastRefreshError,
   setLastRefreshStats,
 } = require("../repositories/preferencesRepo");
+const { getCustomSources } = require("../repositories/sourcesRepo");
 const { createResourceMonitor } = require("./resourceMonitor");
 const { sources } = require("./sources");
 const { enrichArticlesWithFullText } = require("./articleExtractor");
@@ -282,6 +283,51 @@ async function fetchFeed(source, preferences, { maxFeedBytes = MAX_FEED_BYTES } 
   }
 }
 
+// Validates a candidate feed URL by actually fetching and parsing it as
+// RSS/Atom — the real safeguard against a hallucinated or wrong URL from the
+// AI chat's add-feed tool. Reuses the same fetch/parse/size-limit machinery
+// as fetchFeed above.
+async function validateFeedUrl(url, { fetchImpl = fetch } = {}) {
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return { ok: false, error: "Not a valid URL" };
+  }
+
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return { ok: false, error: "Feed URL must be http or https" };
+  }
+
+  try {
+    const response = await fetchImpl(url, {
+      headers: {
+        Accept: "application/rss+xml, application/xml, text/xml",
+        "User-Agent": "news-agg-desktop/2.0",
+      },
+      signal: AbortSignal.timeout(15000),
+    });
+
+    if (!response.ok) {
+      return { ok: false, error: `Feed returned ${response.status}` };
+    }
+
+    const xml = await readResponseTextWithLimit(response, MAX_FEED_BYTES);
+    const feed = await parser.parseString(xml);
+
+    if (!Array.isArray(feed.items)) {
+      return { ok: false, error: "URL did not parse as an RSS/Atom feed" };
+    }
+
+    return { ok: true, title: feed.title?.trim() || undefined };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Could not validate feed",
+    };
+  }
+}
+
 function dedupeByUrl(articles) {
   const seen = new Set();
 
@@ -482,6 +528,7 @@ function createRefreshService({
       const preferences = getPreferences(db);
       const settled = await (fetchAllFeedsOverride ?? fetchAllFeeds)(preferences, {
         resourceMonitor,
+        sourceList: [...sources, ...getCustomSources(db)],
       });
       memoryBreaks += Number(settled.memoryBreaks ?? 0);
 
@@ -612,4 +659,5 @@ module.exports = {
   fetchFeed,
   inferTags,
   normalizeItem,
+  validateFeedUrl,
 };

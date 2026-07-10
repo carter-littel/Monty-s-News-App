@@ -86,4 +86,13 @@ contextBridge.exposeInMainWorld("desktop", {
   chat: {
     sendMessage: (payload) => ipcRenderer.invoke("desktop:chat:sendMessage", payload),
   },
+  sources: {
+    list: () => ipcRenderer.invoke("desktop:sources:list"),
+    remove: (id) => ipcRenderer.invoke("desktop:sources:remove", id),
+    onChanged: (callback) => {
+      const listener = (_event, payload) => callback(payload);
+      ipcRenderer.on("desktop:sourcesChanged", listener);
+      return () => ipcRenderer.removeListener("desktop:sourcesChanged", listener);
+    },
+  },
 });

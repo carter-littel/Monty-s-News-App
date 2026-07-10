@@ -144,6 +144,8 @@ function sanitizeMemoryDomain(value) {
   return s && ALLOWED_MEMORY_DOMAINS.has(s) ? s : undefined;
 }
 
+const MEMORY_DOMAINS = Array.from(ALLOWED_MEMORY_DOMAINS);
+
 function sanitizeClusterIdValue(value) {
   return clampString(value, 256);
 }
@@ -249,12 +251,22 @@ function sanitizePreferences(input) {
     personalizedDefault:
       typeof src.personalizedDefault === "boolean" ? src.personalizedDefault : undefined,
     geminiApiKey: clampString(src.geminiApiKey, 200),
+    geminiEnabled: typeof src.geminiEnabled === "boolean" ? src.geminiEnabled : undefined,
+    claudeApiKey: clampString(src.claudeApiKey, 200),
+    claudeEnabled: typeof src.claudeEnabled === "boolean" ? src.claudeEnabled : undefined,
+    openaiApiKey: clampString(src.openaiApiKey, 200),
+    openaiEnabled: typeof src.openaiEnabled === "boolean" ? src.openaiEnabled : undefined,
   };
 }
 
 const CHAT_ROLES = new Set(["user", "assistant"]);
 const MAX_CHAT_HISTORY = 40;
 const MAX_CHAT_CONTEXT_ARTICLES = 30;
+const CHAT_PROVIDERS = new Set(["gemini", "claude", "openai"]);
+
+function sanitizeChatProvider(value) {
+  return CHAT_PROVIDERS.has(value) ? value : "gemini";
+}
 
 function sanitizeChatHistoryEntry(entry) {
   const src = pickObject(entry);
@@ -297,6 +309,7 @@ function sanitizeChatContext(input) {
 function sanitizeChatPayload(input) {
   const src = pickObject(input);
   return {
+    provider: sanitizeChatProvider(src.provider),
     message: clampString(src.message, MAX_STRING) ?? "",
     history: sanitizeChatHistory(src.history),
     context: sanitizeChatContext(src.context),
@@ -384,6 +397,22 @@ function sanitizeScanFolderArray(input) {
   return out;
 }
 
+const HTTP_URL_PATTERN = /^https?:\/\//i;
+
+function sanitizeAddSourceInput(input) {
+  const src = pickObject(input);
+  const url = clampString(src.url, 2048);
+  return {
+    url: url && HTTP_URL_PATTERN.test(url) ? url : undefined,
+    name: clampString(src.name, 200),
+    category: sanitizeMemoryDomain(src.category) ?? "General",
+  };
+}
+
+function sanitizeSourceId(value) {
+  return clampNumber(value, { min: 1, max: Number.MAX_SAFE_INTEGER });
+}
+
 function sanitizeScanStatePayload(input) {
   const src = pickObject(input);
   const rawRatings = pickObject(src.clusterRatings);
@@ -435,4 +464,7 @@ module.exports = {
   sanitizeMemorySnapshotPayload,
   sanitizeDomainCollapsePayload,
   sanitizeChatPayload,
+  sanitizeAddSourceInput,
+  sanitizeSourceId,
+  MEMORY_DOMAINS,
 };

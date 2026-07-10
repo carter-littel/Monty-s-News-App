@@ -1,14 +1,22 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useChatContextValue } from "@/components/ChatContext";
 import { useChatSession } from "@/hooks/useChatSession";
+import { enabledProviders as enabledProvidersFrom } from "@/lib/chatProviders";
 
 const BUBBLE_SIZE = 40;
 const PANEL_W = 380;
 const PANEL_H = 520;
 const GAP = 12;
 const EDGE_MARGIN = 4;
+
+const PROVIDER_LABELS: Record<ChatProvider, string> = {
+  claude: "Claude",
+  gemini: "Gemini",
+  openai: "ChatGPT",
+};
 
 type Position = { right: number; bottom: number };
 
@@ -30,7 +38,50 @@ export function FloatingChat() {
   const mountedOpenSignalRef = useRef<number | null>(null);
 
   const { chatContext, openSignal } = useChatContextValue();
-  const { messages, input, setInput, sending, error, isDesktop, send } = useChatSession(chatContext);
+
+  const claudeSession = useChatSession("claude", chatContext);
+  const geminiSession = useChatSession("gemini", chatContext);
+  const openaiSession = useChatSession("openai", chatContext);
+  const sessions = useMemo(
+    () => ({ claude: claudeSession, gemini: geminiSession, openai: openaiSession }),
+    [claudeSession, geminiSession, openaiSession],
+  );
+
+  const isDesktop = claudeSession.isDesktop;
+
+  const [preferences, setPreferences] = useState<DesktopPreferences | null>(null);
+  const [activeProvider, setActiveProvider] = useState<ChatProvider>("gemini");
+
+  useEffect(() => {
+    let mounted = true;
+
+    if (!window.desktop) {
+      return () => {
+        mounted = false;
+      };
+    }
+
+    void window.desktop.data.getPreferences().then((next) => {
+      if (mounted) setPreferences(next);
+    });
+    const removeListener = window.desktop.preferences.onChanged((next) => {
+      if (mounted) setPreferences(next);
+    });
+
+    return () => {
+      mounted = false;
+      removeListener?.();
+    };
+  }, []);
+
+  const enabledProviders = useMemo(() => enabledProvidersFrom(preferences), [preferences]);
+
+  useEffect(() => {
+    if (enabledProviders.length === 0) return;
+    if (!enabledProviders.includes(activeProvider)) {
+      setActiveProvider(enabledProviders[0]);
+    }
+  }, [enabledProviders, activeProvider]);
 
   useEffect(() => {
     if (mountedOpenSignalRef.current === null) {
@@ -43,11 +94,13 @@ export function FloatingChat() {
     }
   }, [openSignal]);
 
+  const activeSession = sessions[activeProvider];
+
   useEffect(() => {
     if (open) {
       messagesEndRef.current?.scrollIntoView({ block: "end" });
     }
-  }, [open, messages, sending]);
+  }, [open, activeSession.messages, activeSession.sending]);
 
   function startDrag(event: React.MouseEvent) {
     if (event.button !== 0) return;
@@ -122,16 +175,41 @@ export function FloatingChat() {
 
           {!isDesktop ? (
             <div className="flex-1 p-4 text-sm text-slate-500">Chat requires the desktop app.</div>
+          ) : enabledProviders.length === 0 ? (
+            <div className="flex-1 p-4 text-sm text-slate-500">
+              No AI providers enabled.{" "}
+              <Link href="/settings" className="font-medium text-slate-900 underline">
+                Turn one on in Settings
+              </Link>
+              .
+            </div>
           ) : (
             <>
+              <div className="flex gap-1.5 border-b border-slate-200 bg-slate-50 px-3 py-2">
+                {enabledProviders.map((provider) => (
+                  <button
+                    key={provider}
+                    type="button"
+                    onClick={() => setActiveProvider(provider)}
+                    className={
+                      provider === activeProvider
+                        ? "rounded-full bg-slate-900 px-3 py-1 text-xs font-medium text-white"
+                        : "rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100"
+                    }
+                  >
+                    {PROVIDER_LABELS[provider]}
+                  </button>
+                ))}
+              </div>
+
               <div className="flex-1 space-y-3 overflow-y-auto bg-[#F5F5F3] p-4">
-                {messages.length === 0 ? (
+                {activeSession.messages.length === 0 ? (
                   <p className="text-sm leading-6 text-slate-500">
                     Ask about the stories currently on screen — e.g. &ldquo;summarize the top
                     story&rdquo; or &ldquo;what changed this week in AI infra?&rdquo;
                   </p>
                 ) : (
-                  messages.map((message, index) => (
+                  activeSession.messages.map((message, index) => (
                     <div
                       key={index}
                       className={
@@ -144,34 +222,34 @@ export function FloatingChat() {
                     </div>
                   ))
                 )}
-                {sending ? <div className="text-xs text-slate-400">Thinking…</div> : null}
+                {activeSession.sending ? <div className="text-xs text-slate-400">Thinking…</div> : null}
                 <div ref={messagesEndRef} />
               </div>
 
-              {error ? (
+              {activeSession.error ? (
                 <div className="border-t border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
-                  {error}
+                  {activeSession.error}
                 </div>
               ) : null}
 
               <div className="flex items-center gap-2 border-t border-slate-200 p-3">
                 <input
                   type="text"
-                  value={input}
-                  onChange={(event) => setInput(event.target.value)}
+                  value={activeSession.input}
+                  onChange={(event) => activeSession.setInput(event.target.value)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" && !event.shiftKey) {
                       event.preventDefault();
-                      void send();
+                      void activeSession.send();
                     }
                   }}
-                  placeholder="Ask about today's news…"
+                  placeholder={`Ask ${PROVIDER_LABELS[activeProvider]} about today's news…`}
                   className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
                 />
                 <button
                   type="button"
-                  onClick={() => void send()}
-                  disabled={sending || !input.trim()}
+                  onClick={() => void activeSession.send()}
+                  disabled={activeSession.sending || !activeSession.input.trim()}
                   className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-medium text-white transition disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Send

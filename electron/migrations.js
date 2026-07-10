@@ -325,6 +325,21 @@ const migrations = [
       reclassify();
     },
   },
+  {
+    version: 6,
+    name: "custom_sources",
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS custom_sources (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          url TEXT NOT NULL UNIQUE,
+          category TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        );
+      `);
+    },
+  },
 ];
 
 function ensureSchemaVersionTable(db) {

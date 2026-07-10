@@ -47,7 +47,9 @@ const {
   createRefreshService,
   fetchAllFeeds,
   normalizeItem,
+  validateFeedUrl,
 } = require("./services/refreshService");
+const { addCustomSource } = require("./repositories/sourcesRepo");
 
 const dbs: Array<unknown> = [];
 
@@ -116,7 +118,7 @@ describe("Electron Phase 2 local data layer", () => {
     const version = db.prepare("SELECT max(version) AS version FROM schema_version").get();
     const articles = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'articles'").get();
 
-    expect(version.version).toBe(5);
+    expect(version.version).toBe(6);
     expect(articles.name).toBe("articles");
   });
 
@@ -864,5 +866,95 @@ describe("Electron Phase 2 local data layer", () => {
     expect(count).toBe(1);
     expect(searchStats(db).indexedCount).toBe(1);
     expect(querySearch(db, { q: "OpenAI", limit: 10 })).toHaveLength(1);
+  });
+
+  it("merges custom sources into the fetch source list on refresh", async () => {
+    const db = createDb();
+    addCustomSource(db, {
+      name: "Custom Feed",
+      url: "https://custom.example.com/feed",
+      category: "General",
+    });
+
+    let capturedOptions: any = null;
+    const refreshService = createRefreshService({
+      db,
+      resourceMonitor: unconstrainedResourceMonitor(),
+      ...noOpRefreshEnrichers(),
+      fetchAllFeeds: (_preferences: unknown, options: unknown) => {
+        capturedOptions = options;
+        return Promise.resolve([]);
+      },
+    });
+
+    const result = await refreshService.runRefresh({ manual: true });
+
+    expect(result.success).toBe(true);
+    expect(capturedOptions.sourceList.length).toBeGreaterThan(1);
+    expect(capturedOptions.sourceList).toContainEqual({
+      name: "Custom Feed",
+      url: "https://custom.example.com/feed",
+      category: "General",
+    });
+  });
+});
+
+function xmlResponse(xml: string, { status = 200, contentLength }: { status?: number; contentLength?: number } = {}) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    headers: { get: (name: string) => (name === "content-length" && contentLength != null ? String(contentLength) : null) },
+    text: async () => xml,
+  };
+}
+
+const VALID_FEED_XML = `<?xml version="1.0"?>
+<rss version="2.0"><channel><title>Test Feed</title>
+<item><title>Item 1</title><link>https://example.com/1</link></item>
+</channel></rss>`;
+
+describe("validateFeedUrl", () => {
+  it("accepts a real, parseable feed and returns its title", async () => {
+    const fetchImpl = async () => xmlResponse(VALID_FEED_XML);
+    const result = await validateFeedUrl("https://example.com/feed", { fetchImpl });
+    expect(result).toEqual({ ok: true, title: "Test Feed" });
+  });
+
+  it("rejects a non-2xx response", async () => {
+    const fetchImpl = async () => xmlResponse("not found", { status: 404 });
+    const result = await validateFeedUrl("https://example.com/missing", { fetchImpl });
+    expect(result).toEqual({ ok: false, error: "Feed returned 404" });
+  });
+
+  it("rejects an oversized response before reading the body", async () => {
+    const fetchImpl = async () => xmlResponse(VALID_FEED_XML, { contentLength: 2_000_000 });
+    const result = await validateFeedUrl("https://example.com/huge", { fetchImpl });
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("too large");
+  });
+
+  it("rejects a response that doesn't parse as RSS/Atom", async () => {
+    const fetchImpl = async () => xmlResponse("<html><body>not a feed</body></html>");
+    const result = await validateFeedUrl("https://example.com/not-a-feed", { fetchImpl });
+    expect(result.ok).toBe(false);
+    expect(typeof result.error).toBe("string");
+  });
+
+  it("surfaces a network error", async () => {
+    const fetchImpl = async () => {
+      throw new Error("network down");
+    };
+    const result = await validateFeedUrl("https://example.com/feed", { fetchImpl });
+    expect(result).toEqual({ ok: false, error: "network down" });
+  });
+
+  it("rejects an invalid URL", async () => {
+    const result = await validateFeedUrl("not-a-url");
+    expect(result).toEqual({ ok: false, error: "Not a valid URL" });
+  });
+
+  it("rejects a non-http(s) protocol", async () => {
+    const result = await validateFeedUrl("ftp://example.com/feed");
+    expect(result).toEqual({ ok: false, error: "Feed URL must be http or https" });
   });
 });

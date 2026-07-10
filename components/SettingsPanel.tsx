@@ -59,6 +59,18 @@ function DeveloperInfoCard() {
   );
 }
 
+const PROVIDERS: Array<{
+  key: ChatProvider;
+  label: string;
+  enabledField: "claudeEnabled" | "geminiEnabled" | "openaiEnabled";
+  keyField: "claudeApiKey" | "geminiApiKey" | "openaiApiKey";
+  placeholder: string;
+}> = [
+  { key: "claude", label: "Claude", enabledField: "claudeEnabled", keyField: "claudeApiKey", placeholder: "Paste your Claude API key" },
+  { key: "gemini", label: "Gemini", enabledField: "geminiEnabled", keyField: "geminiApiKey", placeholder: "Paste your Gemini API key" },
+  { key: "openai", label: "ChatGPT", enabledField: "openaiEnabled", keyField: "openaiApiKey", placeholder: "Paste your OpenAI API key" },
+];
+
 export function SettingsPanel() {
   const [appInfo, setAppInfo] = useState<{ name: string; version: string; platform: string } | null>(
     null,
@@ -70,7 +82,12 @@ export function SettingsPanel() {
   const [searchStats, setSearchStats] = useState<SearchStats | null>(null);
   const [rebuildingSearch, setRebuildingSearch] = useState(false);
   const [lastRefreshResult, setLastRefreshResult] = useState<DesktopOperationResult | null>(null);
-  const [geminiKeyDraft, setGeminiKeyDraft] = useState("");
+  const [keyDrafts, setKeyDrafts] = useState<Record<ChatProvider, string>>({
+    claude: "",
+    gemini: "",
+    openai: "",
+  });
+  const [customSources, setCustomSources] = useState<DesktopCustomSource[]>([]);
 
   useEffect(() => {
     let mounted = true;
@@ -94,6 +111,9 @@ export function SettingsPanel() {
     void window.desktop.search?.stats().then((stats) => {
       if (mounted) setSearchStats(stats);
     });
+    void window.desktop.sources.list().then((next) => {
+      if (mounted) setCustomSources(next);
+    });
     const removeRefreshListener = window.desktop.jobs.onRefreshComplete((result) => {
       setRefreshing(false);
       setLastRefreshResult(result);
@@ -103,17 +123,25 @@ export function SettingsPanel() {
       setPreferences(nextPreferences);
       setLastRefreshResult((current) => nextPreferences.lastRefreshStats ?? current);
     });
+    const removeSourcesListener = window.desktop.sources.onChanged((next) => {
+      if (mounted) setCustomSources(next);
+    });
 
     return () => {
       mounted = false;
       removeRefreshListener?.();
       removePreferencesListener?.();
+      removeSourcesListener?.();
     };
   }, []);
 
   useEffect(() => {
-    setGeminiKeyDraft(preferences?.geminiApiKey ?? "");
-  }, [preferences?.geminiApiKey]);
+    setKeyDrafts({
+      claude: preferences?.claudeApiKey ?? "",
+      gemini: preferences?.geminiApiKey ?? "",
+      openai: preferences?.openaiApiKey ?? "",
+    });
+  }, [preferences?.claudeApiKey, preferences?.geminiApiKey, preferences?.openaiApiKey]);
 
   if (!isDesktop) {
     return (
@@ -139,6 +167,11 @@ export function SettingsPanel() {
     } else {
       setStatus(result?.error ?? "Settings failed");
     }
+  };
+
+  const handleRemoveSource = async (id: number) => {
+    const result = await window.desktop?.sources.remove(id);
+    setStatus(result?.success ? "Source removed" : result?.error ?? "Remove failed");
   };
 
   const handleClearLearning = async () => {
@@ -265,25 +298,87 @@ export function SettingsPanel() {
           />
           <span>Personalized default</span>
         </label>
-        <label className="space-y-1 sm:col-span-2">
-          <span className="text-sm font-medium text-slate-700">Gemini API key</span>
-          <input
-            type="password"
-            value={geminiKeyDraft}
-            onChange={(event) => setGeminiKeyDraft(event.target.value)}
-            onBlur={() => {
-              if (geminiKeyDraft.trim() !== (preferences.geminiApiKey ?? "")) {
-                void savePreference({ geminiApiKey: geminiKeyDraft.trim() });
-              }
-            }}
-            placeholder="Paste your Gemini API key"
-            autoComplete="off"
-            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
-          />
-          <span className="block text-xs text-slate-400">
-            Stored locally, used only by the floating chat assistant.
-          </span>
-        </label>
+      </section>
+
+      <section className="surface-card p-6">
+        <p className="section-kicker">AI Providers</p>
+        <p className="mt-1 text-xs text-slate-400">
+          Enable any combination — each one gets its own tab and conversation in the floating chat
+          assistant.
+        </p>
+        <div className="mt-4 space-y-4">
+          {PROVIDERS.map((provider) => (
+            <div key={provider.key} className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                checked={Boolean(preferences[provider.enabledField])}
+                onChange={(event) =>
+                  void savePreference({ [provider.enabledField]: event.target.checked })
+                }
+                className="mt-2.5"
+                aria-label={`Enable ${provider.label}`}
+              />
+              <label className="flex-1 space-y-1">
+                <span className="text-sm font-medium text-slate-700">{provider.label} API key</span>
+                <input
+                  type="password"
+                  value={keyDrafts[provider.key]}
+                  onChange={(event) =>
+                    setKeyDrafts((current) => ({ ...current, [provider.key]: event.target.value }))
+                  }
+                  onBlur={() => {
+                    const trimmed = keyDrafts[provider.key].trim();
+                    if (trimmed !== (preferences[provider.keyField] ?? "")) {
+                      void savePreference({ [provider.keyField]: trimmed });
+                    }
+                  }}
+                  placeholder={provider.placeholder}
+                  autoComplete="off"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                />
+              </label>
+            </div>
+          ))}
+        </div>
+        <p className="mt-4 text-xs text-slate-400">
+          Stored locally, used only by the floating chat assistant.
+        </p>
+      </section>
+
+      <section className="surface-card p-6">
+        <p className="section-kicker">Custom Sources</p>
+        <p className="mt-1 text-xs text-slate-400">
+          Feeds you or the chat assistant have added. Ask the assistant to add a source, or remove
+          one here.
+        </p>
+        {customSources.length === 0 ? (
+          <p className="mt-4 text-sm text-slate-500">
+            No custom sources yet — ask the chat assistant to add one.
+          </p>
+        ) : (
+          <ul className="mt-4 space-y-2">
+            {customSources.map((source) => (
+              <li
+                key={source.id}
+                className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-slate-700">
+                    {source.name} <span className="text-slate-400">· {source.category}</span>
+                  </p>
+                  <p className="truncate text-xs text-slate-400">{source.url}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleRemoveSource(source.id)}
+                  className="shrink-0 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-rose-700 transition hover:bg-rose-50"
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <section className="surface-card flex flex-wrap gap-3 p-6">

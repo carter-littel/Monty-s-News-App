@@ -10,15 +10,17 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react";
-import { useSetChatContext, useOpenChat } from "@/components/ChatContext";
+import { useSetChatContext } from "@/components/ChatContext";
 import { AddToModal } from "@/components/scan/AddToModal";
 import { ReaderPane } from "@/components/scan/ReaderPane";
 import { SectorRail } from "@/components/scan/SectorRail";
 import { SelectionBanner } from "@/components/scan/SelectionBanner";
 import { ShiftStrip } from "@/components/scan/ShiftStrip";
+import { SummaryModal } from "@/components/scan/SummaryModal";
 import { TeachingDrawer } from "@/components/scan/TeachingDrawer";
 import { TerminalRow } from "@/components/scan/TerminalRow";
 import { DigestRow } from "@/components/scan/DigestRow";
+import { enabledProviders } from "@/lib/chatProviders";
 import { clusterArticles } from "@/lib/clustering";
 import {
   clearClusterRating,
@@ -177,7 +179,10 @@ export function ScanTerminal() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
   const [addToModalOpen, setAddToModalOpen] = useState(false);
-  const openChat = useOpenChat();
+  const [summaryModalOpen, setSummaryModalOpen] = useState(false);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryText, setSummaryText] = useState<string | null>(null);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
 
   // Refs that mirror the latest values so rateRow can read them without
   // listing articles/feedbackMap in its useCallback deps — re-binding rateRow
@@ -604,11 +609,42 @@ export function ScanTerminal() {
     setAddToModalOpen(false);
   }, [batchRate]);
 
-  const handleSummarizeSelection = useCallback(() => {
-    openChat({
-      articles: selectedRows.map((row) => ({ headline: row.headline, summary: row.summary })),
+  const handleSummarizeSelection = useCallback(async () => {
+    setSummaryModalOpen(true);
+    setSummaryLoading(true);
+    setSummaryError(null);
+    setSummaryText(null);
+
+    if (!window.desktop?.chat) {
+      setSummaryLoading(false);
+      setSummaryError("Summaries require the desktop app.");
+      return;
+    }
+
+    const preferences = await window.desktop.data.getPreferences();
+    const provider = enabledProviders(preferences)[0];
+
+    if (!provider) {
+      setSummaryLoading(false);
+      setSummaryError("Enable an AI provider in Settings to use this.");
+      return;
+    }
+
+    const articles = selectedRows.map((row) => ({ headline: row.headline, summary: row.summary }));
+    const result = await window.desktop.chat.sendMessage({
+      provider,
+      message: `Summarize these ${articles.length} articles in a short paragraph, highlighting the most important takeaways and any connections between them.`,
+      history: [],
+      context: { articles },
     });
-  }, [openChat, selectedRows]);
+
+    setSummaryLoading(false);
+    if (result.success && result.message) {
+      setSummaryText(result.message.content);
+    } else {
+      setSummaryError(result.error ?? "Could not generate a summary.");
+    }
+  }, [selectedRows]);
 
   // ── Keyboard shortcuts (single-bind) ──
   // All values the handler reads are mirrored in keyStateRef, so the
@@ -986,6 +1022,14 @@ export function ScanTerminal() {
         onAddInteresting={handleAddInteresting}
         onAddToFolder={addSelectedToFolder}
         onCreateFolder={createFolderAndAdd}
+      />
+
+      <SummaryModal
+        open={summaryModalOpen}
+        loading={summaryLoading}
+        summary={summaryText}
+        error={summaryError}
+        onClose={() => setSummaryModalOpen(false)}
       />
     </div>
   );
