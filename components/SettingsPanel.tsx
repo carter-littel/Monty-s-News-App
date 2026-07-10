@@ -15,6 +15,10 @@ function formatArticleImpact(result: DesktopOperationResult) {
     return result.error ?? "Refresh skipped";
   }
 
+  if (!result.success) {
+    return result.error ?? "Refresh failed";
+  }
+
   const incoming = result.incoming ?? (result.inserted ?? 0) + (result.updated ?? 0);
   const memoryBreaks =
     result.memoryBreaks && result.memoryBreaks > 0
@@ -24,7 +28,8 @@ function formatArticleImpact(result: DesktopOperationResult) {
     result.skippedKnown != null
       ? `${result.skippedKnown} known`
       : `${result.updated ?? 0} updated`;
-  return `${incoming} in - ${result.inserted ?? 0} new - ${churn}${memoryBreaks}`;
+  const warning = result.warning ? ` - ${result.warning}` : "";
+  return `${incoming} in - ${result.inserted ?? 0} new - ${churn}${memoryBreaks}${warning}`;
 }
 
 function formatResourceImpact(result: DesktopOperationResult) {

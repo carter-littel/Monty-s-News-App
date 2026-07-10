@@ -537,6 +537,7 @@ function createRefreshService({
 
       if (!fetched.length && errors.length) {
         const message = `Refresh failed: ${errors.slice(0, 3).join("; ")}`;
+        console.warn(`[refresh] ${message} (${errors.length} feed error${errors.length === 1 ? "" : "s"} total)`);
         setLastRefreshError(db, message);
         return complete({
           success: false,
@@ -611,6 +612,12 @@ function createRefreshService({
       const refreshedAt = new Date().toISOString();
       setLastRefresh(db, refreshedAt);
       setLastRefreshError(db, null);
+
+      if (errors.length) {
+        console.warn(
+          `[refresh] ${errors.length} of ${settled.length} feed${settled.length === 1 ? "" : "s"} failed: ${errors.slice(0, 3).join("; ")}`,
+        );
+      }
 
       return complete({
         success: true,

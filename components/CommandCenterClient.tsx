@@ -469,7 +469,7 @@ export function CommandCenterClient({
       setPersonalizedView(preferences.personalizedDefault);
       setRefreshStatus(
         preferences.lastRefreshError
-          ? "Cached data"
+          ? "Refresh failed — see Settings for details"
           : lastRefresh
             ? "Local cache"
             : "Local cache empty",
@@ -1327,7 +1327,7 @@ export function CommandCenterClient({
                   });
                 }
                 if (preferences.lastRefreshError) {
-                  setRefreshStatus("Cached data");
+                  setRefreshStatus("Refresh failed — see Settings for details");
                 }
               }}
             />
