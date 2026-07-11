@@ -269,3 +269,92 @@ Use the desktop Settings panel and select `Rebuild search index`. The same opera
 - Remote backup
 - Cross-device profile/state merge
 - Optional semantic/vector search
+
+## Phase 4: AI Assistant, Custom Sources, and Scan Redesign
+
+Phase 4 adds a global AI chat assistant, gives it a real ability to act on the app instead of just answering questions about it, and reworks the Scan view around multi-select and personal folders.
+
+### Global Floating Chat
+
+A draggable chat bubble is mounted once at the app layout level (`components/FloatingChat.tsx`, wrapped via `components/ClientRootShell.tsx`) and is available on every page, not just one tab of the Hub. Click to open/close; drag the bubble or the panel's title bar to reposition it; position is clamped to the viewport.
+
+### Multi-Provider Support
+
+The assistant supports three independently selectable providers — Claude, Gemini, and ChatGPT — instead of a single hardcoded model:
+
+- Each provider has its own API key field and enable/disable checkbox in Settings (`components/SettingsPanel.tsx`).
+- The floating chat panel shows a tab per **enabled** provider, and each tab is a genuinely independent, persistent conversation — switching tabs never loses another provider's history or an in-flight response, and you can have simultaneous conversations with, say, ChatGPT and Gemini at once.
+- Main-process integrations live in `electron/services/claudeChatService.js`, `electron/services/openaiChatService.js`, and the Gemini path in `electron/services/chatService.js`, which also acts as the provider dispatcher.
+
+### Chat Tool-Calling: Managing RSS Sources From Chat
+
+The assistant can act on the app, not just describe it. Two tools are wired into all three providers (`electron/services/chatTools.js`), each provider translating the same schema into its own native tool-call format:
+
+- **`add_rss_feed`** — validates a candidate URL by actually fetching and parsing it as RSS/Atom before persisting anything, so a hallucinated or dead URL is rejected with a clear reason instead of silently added.
+- **`list_rss_feeds`** — lets the assistant see what's already configured (built-in and custom) before acting, so it can answer "what sources do we have?" or check for duplicates instead of guessing.
+
+User-added sources live in a new `custom_sources` SQLite table (`electron/repositories/sourcesRepo.js`, migration v6 in `electron/migrations.js`) and are merged into the refresh pipeline alongside the hardcoded list in `electron/services/sources.js`. They're visible and removable from Settings under **Custom Sources**.
+
+### Settings Page
+
+A global Settings page, reachable from a gear-icon button in the opposite corner from the chat bubble, consolidates what used to be scattered or missing entirely: AI provider keys/toggles, Custom Sources management, refresh/notification preferences, data location, and developer info (current route, environment) that previously only existed in the Next.js dev-only overlay.
+
+### Scan View Redesign
+
+The Scan view (`components/scan/ScanTerminal.tsx` and `components/scan/*`) moved to a denser terminal-style layout and gained:
+
+- Checkbox multi-select across rows, with a selection banner for bulk actions.
+- Personal folders — create, rename, delete, and add selected stories to a folder (`lib/scanFolders.ts`), stored alongside teaching/rating state in the existing `DesktopScanState` blob.
+- **Summarize with AI** — select a few stories and get a one-shot summary in a small modal (`components/scan/SummaryModal.tsx`), using whichever AI provider is enabled first. This is a standalone request, independent of the persistent chat threads — it doesn't open or touch the floating chat panel.
+
+### Desktop API
+
+Phase 4 adds these preload surfaces:
+
+```ts
+window.desktop.chat = {
+  sendMessage({ provider, message, history, context })
+}
+
+window.desktop.sources = {
+  list,
+  remove,
+  onChanged
+}
+```
+
+`DesktopPreferences` gained per-provider key/enabled fields (`claudeApiKey`, `claudeEnabled`, `geminiApiKey`, `geminiEnabled`, `openaiApiKey`, `openaiEnabled`). As with every other bridge, there is still no generic SQL or filesystem access — the renderer only calls these explicit methods.
+
+## Troubleshooting
+
+Real issues hit while rolling this out to a team, and their fixes — in case anyone else runs into the same thing.
+
+### Electron crashes on launch with a code-signing error
+
+**Symptom:** the app crashes immediately on startup; a crash report shows `Termination Reason: Namespace CODESIGNING` and a stack trace failing inside `node::binding::DLOpen` (loading a native addon — `better-sqlite3`, the only native module this app uses).
+
+**Cause:** the native module was compiled on a different machine or its files were altered in transit. This happens if `node_modules` was copied/zipped/AirDropped from someone else's machine instead of running `npm install` locally, or if the repo was obtained via GitHub's "Download ZIP" button — macOS quarantines every file in a ZIP download, and a quarantined, ad-hoc-signed native binary fails this exact check.
+
+**Fix:**
+
+```bash
+rm -rf node_modules
+xattr -cr .
+npm install
+```
+
+Always `git clone` rather than downloading a ZIP, and never copy `node_modules` between machines — always run `npm install` fresh on each machine so native modules are built locally.
+
+### Refresh completes but nothing useful shows, with no visible reason why
+
+**Cause (fixed):** refresh failures and partial failures used to be swallowed silently — Settings showed a flat `0 in - 0 new - 0 updated` and the Hub showed a generic `Cached data` label, even on a hard failure, with the real error captured internally but never displayed.
+
+Settings now shows the actual error/warning text on a failed or partially-failed refresh, the Hub says `Refresh failed — see Settings for details` instead of the misleadingly-benign `Cached data`, and failures are also logged to the terminal running `npm run dev:desktop`, prefixed `[refresh]`.
+
+**Also check:** scheduled/automatic refreshes are intentionally skipped while the laptop is running on battery power (`shouldSuspendScheduledRefresh` in `electron/main.js`) — this shows as `Auto-refresh paused on battery` in Settings. Plug in, or use `Refresh Now` (bypasses this check) to force a refresh.
+
+### Only one domain (e.g. "LLM") ever has articles; most sources fail
+
+**Cause (fixed):** the memory-pressure safeguard in `electron/services/resourceMonitor.js` used default thresholds (768 MB warning / 256 MB critical) tuned as if `os.freemem()` reported true available memory. It doesn't, especially on macOS — the OS deliberately keeps reported "free" memory low by filling idle RAM with reclaimable disk cache, so a perfectly healthy laptop routinely reads well under 256 MB "free." This tripped the critical-memory abort path partway through fetching the source list on ordinary hardware, silently marking every source after that point as failed instead of fetching it. Sources are processed in the order they're listed in `electron/services/sources.js` (LLM category first), which is why only the first few ever got through.
+
+**Fix:** thresholds were lowered to realistic floors (256 MB warning / 64 MB critical) that only fire for genuinely critical conditions. `git pull` and relaunch — no environment variables needed. (If you were working around this with `NEWS_AGG_MIN_FREE_MEMORY_MB=1 NEWS_AGG_WARNING_FREE_MEMORY_MB=1` before this fix landed, you can drop it — unless you `export`ed it into a shell profile rather than typing it inline each time, in which case remove it from there too.)
